@@ -4,6 +4,7 @@ import ganttGeometryTest from './GanttGeometry.test';
 import daySegmenterTest from './DaySegmenter.test';
 import laneLayoutTest from './LaneLayout.test';
 import dayGestureMathTest from './DayGestureMath.test';
+import tapClassifierTest from './TapClassifier.test';
 
 export default function testsuite() {
   smokeTest();
@@ -12,4 +13,5 @@ export default function testsuite() {
   daySegmenterTest();
   laneLayoutTest();
   dayGestureMathTest();
+  tapClassifierTest();
 }
