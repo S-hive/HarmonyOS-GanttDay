@@ -55,7 +55,7 @@ function canvasWidthFor(viewportW: number): number {
 }
 
 function lengthVp(value: Length): number {
-  return Number(value);
+  return parseFloat(`${value}`);
 }
 
 function addRoundRect(
@@ -92,6 +92,7 @@ export struct DayGanttPage {
   @State canvasWidthVp: number = 1400;
   @State viewportWidthVp: number = 800;
   @State viewportHeightVp: number = 400;
+  @State axisScrollable: ScrollDirection = ScrollDirection.Horizontal;
 
   private settings: RenderingContextSettings = new RenderingContextSettings(true);
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
@@ -368,6 +369,7 @@ export struct DayGanttPage {
     const y: number = point.y;
 
     if (event.type === TouchType.Down) {
+      event.stopPropagation();
       const hit = hitTest(this.hitBars, x, y, DEFAULT_EDGE_SLOP);
       this.dragKind = hit.kind;
       this.dragTask = hit.taskId === null ? null : this.findTask(hit.taskId);
@@ -376,9 +378,7 @@ export struct DayGanttPage {
       this.startScrollX = this.scroller.currentOffset().xOffset;
       this.dragging = true;
       this.preview = null;
-      if (hit.kind !== HIT_EMPTY) {
-        event.stopPropagation();
-      }
+      this.axisScrollable = ScrollDirection.None;
       return;
     }
 
@@ -413,14 +413,13 @@ export struct DayGanttPage {
     }
 
     if ((event.type === TouchType.Up || event.type === TouchType.Cancel) && this.dragging) {
-      if (this.dragKind !== HIT_EMPTY) {
-        event.stopPropagation();
-      }
+      event.stopPropagation();
       const pending: Task | null = this.preview;
       this.dragging = false;
       this.preview = null;
       this.dragTask = null;
       this.dragKind = HIT_EMPTY;
+      this.axisScrollable = ScrollDirection.Horizontal;
       if (pending !== null && event.type === TouchType.Up) {
         this.repo.upsert(pending);
       } else {
@@ -443,7 +442,7 @@ export struct DayGanttPage {
             this.onCanvasTouch(event);
           })
       }
-      .scrollable(ScrollDirection.Horizontal)
+      .scrollable(this.axisScrollable)
       .scrollBar(BarState.Off)
       .width('100%')
       .height('100%')
