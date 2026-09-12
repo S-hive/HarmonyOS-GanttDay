@@ -1,4 +1,8 @@
+import { MemoryTaskRepository } from '../../data/MemoryTaskRepository';
+import { Task } from '../../domain/models/Task';
 import { dateOnly, mondayOnOrBefore } from '../../domain/time/Calendar';
+import { WallClock } from '../../domain/time/WallClock';
+import { DayGanttPage } from '../day/DayGanttPage';
 import { AppColors } from '../theme/AppColors';
 import { ViewNavBar } from './ViewNavBar';
 
@@ -16,10 +20,46 @@ function weekOfMonth(date: Date): number {
   return Math.floor((date.getDate() + dartWeekday(first) - 2) / 7) + 1;
 }
 
+function seedToday(repo: MemoryTaskRepository): void {
+  const now: Date = new Date();
+  const y: number = now.getFullYear();
+  const mo: number = now.getMonth();
+  const d: number = now.getDate();
+  repo.upsert(new Task(
+    'seed-am',
+    '上午',
+    WallClock.minutes(new Date(y, mo, d, 9, 0)),
+    WallClock.minutes(new Date(y, mo, d, 12, 0)),
+    'azure',
+    0
+  ));
+  repo.upsert(new Task(
+    'seed-overlap',
+    '重叠',
+    WallClock.minutes(new Date(y, mo, d, 10, 0)),
+    WallClock.minutes(new Date(y, mo, d, 12, 0)),
+    'azure',
+    0
+  ));
+  repo.upsert(new Task(
+    'seed-night',
+    '跨夜',
+    WallClock.minutes(new Date(y, mo, d, 23, 0)),
+    WallClock.minutes(new Date(y, mo, d + 1, 1, 0)),
+    'azure',
+    0
+  ));
+}
+
 @Component
 export struct AppShell {
   @State anchorDate: Date = dateOnly(new Date());
   @State navIndex: number = 0;
+  private repo: MemoryTaskRepository = new MemoryTaskRepository();
+
+  aboutToAppear(): void {
+    seedToday(this.repo);
+  }
 
   private shift(delta: number): void {
     const y: number = this.anchorDate.getFullYear();
@@ -91,14 +131,23 @@ export struct AppShell {
       .alignItems(VerticalAlign.Center)
       .backgroundColor(AppColors.BAR_BACKGROUND)
 
-      Column() {
-        Text(this.placeholder())
-          .fontSize(18)
-          .fontColor(AppColors.ON_SURFACE_MUTED)
+      if (this.navIndex === 0) {
+        DayGanttPage({
+          repo: this.repo,
+          date: this.anchorDate
+        })
+          .layoutWeight(1)
+          .width('100%')
+      } else {
+        Column() {
+          Text(this.placeholder())
+            .fontSize(18)
+            .fontColor(AppColors.ON_SURFACE_MUTED)
+        }
+        .layoutWeight(1)
+        .width('100%')
+        .justifyContent(FlexAlign.Center)
       }
-      .layoutWeight(1)
-      .width('100%')
-      .justifyContent(FlexAlign.Center)
 
       ViewNavBar({
         selectedIndex: this.navIndex,
