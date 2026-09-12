@@ -14,6 +14,7 @@ import sideDrawerTest from './SideDrawer.test';
 import createTaskPopupTest from './CreateTaskPopup.test';
 import taskFormTest from './TaskForm.test';
 import weekPageTest from './WeekPage.test';
+import monthPageTest from './MonthPage.test';
 import appDatabaseTest from './AppDatabase.test';
 
 export default function testsuite() {
@@ -33,5 +34,6 @@ export default function testsuite() {
   createTaskPopupTest();
   taskFormTest();
   weekPageTest();
+  monthPageTest();
   appDatabaseTest();
 }

@@ -4,6 +4,7 @@ import { dateOnly, mondayOnOrBefore } from '../../domain/time/Calendar';
 import { WallClock } from '../../domain/time/WallClock';
 import { DayGanttPage } from '../day/DayGanttPage';
 import { AppColors } from '../theme/AppColors';
+import { MonthPage } from '../month/MonthPage';
 import { WeekPage } from '../week/WeekPage';
 import { ViewNavBar } from './ViewNavBar';
 
@@ -86,16 +87,6 @@ export struct AppShell {
     return `${this.anchorDate.getFullYear()}-${pad2(this.anchorDate.getMonth() + 1)}-${pad2(this.anchorDate.getDate())}`;
   }
 
-  private placeholder(): string {
-    if (this.navIndex === 1) {
-      return '周';
-    }
-    if (this.navIndex === 2) {
-      return '月';
-    }
-    return '日';
-  }
-
   build() {
     Column() {
       Row() {
@@ -151,14 +142,16 @@ export struct AppShell {
           .layoutWeight(1)
           .width('100%')
       } else {
-        Column() {
-          Text(this.placeholder())
-            .fontSize(18)
-            .fontColor(AppColors.ON_SURFACE_MUTED)
-        }
-        .layoutWeight(1)
-        .width('100%')
-        .justifyContent(FlexAlign.Center)
+        MonthPage({
+          repo: this.repo,
+          date: this.anchorDate,
+          onOpenDay: (day: Date) => {
+            this.anchorDate = dateOnly(day);
+            this.navIndex = 0;
+          }
+        })
+          .layoutWeight(1)
+          .width('100%')
       }
 
       ViewNavBar({
