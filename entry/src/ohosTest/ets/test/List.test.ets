@@ -13,6 +13,7 @@ import deleteConfirmTest from './DeleteConfirm.test';
 import sideDrawerTest from './SideDrawer.test';
 import createTaskPopupTest from './CreateTaskPopup.test';
 import taskFormTest from './TaskForm.test';
+import weekPageTest from './WeekPage.test';
 import appDatabaseTest from './AppDatabase.test';
 
 export default function testsuite() {
@@ -31,5 +32,6 @@ export default function testsuite() {
   sideDrawerTest();
   createTaskPopupTest();
   taskFormTest();
+  weekPageTest();
   appDatabaseTest();
 }

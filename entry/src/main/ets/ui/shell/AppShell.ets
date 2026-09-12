@@ -4,6 +4,7 @@ import { dateOnly, mondayOnOrBefore } from '../../domain/time/Calendar';
 import { WallClock } from '../../domain/time/WallClock';
 import { DayGanttPage } from '../day/DayGanttPage';
 import { AppColors } from '../theme/AppColors';
+import { WeekPage } from '../week/WeekPage';
 import { ViewNavBar } from './ViewNavBar';
 
 function pad2(n: number): string {
@@ -135,6 +136,17 @@ export struct AppShell {
         DayGanttPage({
           repo: this.repo,
           date: this.anchorDate
+        })
+          .layoutWeight(1)
+          .width('100%')
+      } else if (this.navIndex === 1) {
+        WeekPage({
+          repo: this.repo,
+          date: this.anchorDate,
+          onOpenDay: (day: Date) => {
+            this.anchorDate = dateOnly(day);
+            this.navIndex = 0;
+          }
         })
           .layoutWeight(1)
           .width('100%')
