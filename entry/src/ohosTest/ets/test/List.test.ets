@@ -9,6 +9,10 @@ import weekColumnLayoutTest from './WeekColumnLayout.test';
 import monthSpanLayoutTest from './MonthSpanLayout.test';
 import memoryTaskRepositoryTest from './MemoryTaskRepository.test';
 import dayHitTestTest from './DayHitTest.test';
+import deleteConfirmTest from './DeleteConfirm.test';
+import sideDrawerTest from './SideDrawer.test';
+import createTaskPopupTest from './CreateTaskPopup.test';
+import taskFormTest from './TaskForm.test';
 import appDatabaseTest from './AppDatabase.test';
 
 export default function testsuite() {
@@ -23,5 +27,9 @@ export default function testsuite() {
   monthSpanLayoutTest();
   memoryTaskRepositoryTest();
   dayHitTestTest();
+  deleteConfirmTest();
+  sideDrawerTest();
+  createTaskPopupTest();
+  taskFormTest();
   appDatabaseTest();
 }
