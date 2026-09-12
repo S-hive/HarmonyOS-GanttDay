@@ -1,0 +1,15 @@
+/.idea
+/.hvigor
+/.clangd
+/.clang-format
+/.clang-tidy
+/local.properties
+/oh_modules
+**/oh_modules
+**/build
+**/.preview
+**/.cxx
+**/.test
+*.iml
+.superpowers/
+.worktrees/
