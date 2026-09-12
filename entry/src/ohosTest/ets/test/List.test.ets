@@ -8,6 +8,7 @@ import tapClassifierTest from './TapClassifier.test';
 import weekColumnLayoutTest from './WeekColumnLayout.test';
 import monthSpanLayoutTest from './MonthSpanLayout.test';
 import memoryTaskRepositoryTest from './MemoryTaskRepository.test';
+import appDatabaseTest from './AppDatabase.test';
 
 export default function testsuite() {
   smokeTest();
@@ -20,4 +21,5 @@ export default function testsuite() {
   weekColumnLayoutTest();
   monthSpanLayoutTest();
   memoryTaskRepositoryTest();
+  appDatabaseTest();
 }
