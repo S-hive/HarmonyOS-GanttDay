@@ -7,6 +7,7 @@ import dayGestureMathTest from './DayGestureMath.test';
 import tapClassifierTest from './TapClassifier.test';
 import weekColumnLayoutTest from './WeekColumnLayout.test';
 import monthSpanLayoutTest from './MonthSpanLayout.test';
+import memoryTaskRepositoryTest from './MemoryTaskRepository.test';
 
 export default function testsuite() {
   smokeTest();
@@ -18,4 +19,5 @@ export default function testsuite() {
   tapClassifierTest();
   weekColumnLayoutTest();
   monthSpanLayoutTest();
+  memoryTaskRepositoryTest();
 }
