@@ -6,6 +6,7 @@ import laneLayoutTest from './LaneLayout.test';
 import dayGestureMathTest from './DayGestureMath.test';
 import tapClassifierTest from './TapClassifier.test';
 import weekColumnLayoutTest from './WeekColumnLayout.test';
+import monthSpanLayoutTest from './MonthSpanLayout.test';
 
 export default function testsuite() {
   smokeTest();
@@ -16,4 +17,5 @@ export default function testsuite() {
   dayGestureMathTest();
   tapClassifierTest();
   weekColumnLayoutTest();
+  monthSpanLayoutTest();
 }
