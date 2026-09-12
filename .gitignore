@@ -10,6 +10,7 @@
 **/.preview
 **/.cxx
 **/.test
+/.appanalyzer
 *.iml
 .superpowers/
 .worktrees/
