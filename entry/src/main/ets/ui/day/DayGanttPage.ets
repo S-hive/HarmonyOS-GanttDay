@@ -197,9 +197,16 @@ export struct DayGanttPage {
       }
     }
     const lanes: Map<string, number> = LaneLayout.assign(segs);
+    const byId: Map<string, Task> = new Map<string, Task>();
+    for (let t = 0; t < shown.length; t++) {
+      byId.set(shown[t].id, shown[t]);
+    }
     const bars: HitBar[] = [];
     for (let k = 0; k < segs.length; k++) {
       const seg: GanttSegment = segs[k];
+      const owner: Task | undefined = byId.get(seg.taskId);
+      const trueStart: boolean = owner !== undefined && seg.start === owner.plannedStart;
+      const trueEnd: boolean = owner !== undefined && seg.end === owner.plannedEnd;
       const lane: number | undefined = lanes.get(LaneLayout.keyOf(seg));
       const row: number = lane === undefined ? 0 : lane;
       const x: number = geo.xOf(seg.start);
@@ -208,7 +215,7 @@ export struct DayGanttPage {
         w = 2;
       }
       const y: number = HEADER_HEIGHT + row * LANE_HEIGHT + BAR_GAP;
-      bars.push(new HitBar(seg.taskId, x, y, w, BAR_HEIGHT));
+      bars.push(new HitBar(seg.taskId, x, y, w, BAR_HEIGHT, trueStart, trueEnd));
     }
     this.hitBars = bars;
   }

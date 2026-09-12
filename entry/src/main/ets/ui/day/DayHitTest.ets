@@ -11,13 +11,25 @@ export class HitBar {
   y: number;
   width: number;
   height: number;
+  trueStart: boolean;
+  trueEnd: boolean;
 
-  constructor(taskId: string, x: number, y: number, width: number, height: number) {
+  constructor(
+    taskId: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    trueStart: boolean = true,
+    trueEnd: boolean = true
+  ) {
     this.taskId = taskId;
     this.x = x;
     this.y = y;
     this.width = width;
     this.height = height;
+    this.trueStart = trueStart;
+    this.trueEnd = trueEnd;
   }
 }
 
@@ -40,10 +52,10 @@ export function hitTest(bars: HitBar[], x: number, y: number, edgeSlop: number =
       continue;
     }
     if (Math.abs(x - b.x) <= edgeSlop) {
-      return new HitResult(b.taskId, HIT_RESIZE_START);
+      return new HitResult(b.taskId, b.trueStart ? HIT_RESIZE_START : HIT_MOVE);
     }
     if (Math.abs(x - (b.x + b.width)) <= edgeSlop) {
-      return new HitResult(b.taskId, HIT_RESIZE_END);
+      return new HitResult(b.taskId, b.trueEnd ? HIT_RESIZE_END : HIT_MOVE);
     }
     return new HitResult(b.taskId, HIT_MOVE);
   }
