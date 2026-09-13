@@ -12,6 +12,7 @@ import dayHitTestTest from './DayHitTest.test';
 import deleteConfirmTest from './DeleteConfirm.test';
 import sideDrawerTest from './SideDrawer.test';
 import createTaskPopupTest from './CreateTaskPopup.test';
+import barDetailPopupTest from './BarDetailPopup.test';
 import taskFormTest from './TaskForm.test';
 import weekPageTest from './WeekPage.test';
 import monthPageTest from './MonthPage.test';
@@ -21,6 +22,8 @@ import bootStateTest from './BootState.test';
 import createStrokeTest from './CreateStroke.test';
 import dayVisibleRangeTest from './DayVisibleRange.test';
 import createEdgePushTest from './CreateEdgePush.test';
+import actualEditTest from './ActualEdit.test';
+import taskBarToneTest from './TaskBarTone.test';
 
 export default function testsuite() {
   smokeTest();
@@ -37,6 +40,7 @@ export default function testsuite() {
   deleteConfirmTest();
   sideDrawerTest();
   createTaskPopupTest();
+  barDetailPopupTest();
   taskFormTest();
   weekPageTest();
   monthPageTest();
@@ -46,4 +50,6 @@ export default function testsuite() {
   createStrokeTest();
   dayVisibleRangeTest();
   createEdgePushTest();
+  actualEditTest();
+  taskBarToneTest();
 }

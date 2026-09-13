@@ -2,8 +2,9 @@ import { WallClock } from '../../domain/time/WallClock';
 
 export const CREATE_POPUP_WIDTH: number = 300;
 export const CREATE_POPUP_GAP: number = 8;
-export const CREATE_POPUP_ESTIMATED_H: number = 168;
+export const CREATE_POPUP_ESTIMATED_H: number = 128;
 export const CREATE_POPUP_MARGIN: number = 8;
+export const CREATE_POPUP_RADIUS: number = 12;
 
 export class PopupRect {
   x: number = 0;
@@ -47,80 +48,124 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
+export function formatSpanDuration(start: number, end: number): string {
+  let mins: number = end - start;
+  if (mins < 0) {
+    mins = 0;
+  }
+  const h: number = Math.floor(mins / 60);
+  const m: number = mins % 60;
+  if (h <= 0) {
+    return `${m}m`;
+  }
+  if (m === 0) {
+    return `${h}h`;
+  }
+  return `${h}h ${m}m`;
+}
+
 export function formatBarTimeLabel(start: number, end: number): string {
   const a: Date = WallClock.dateTime(start);
   const b: Date = WallClock.dateTime(end);
-  return `${pad2(a.getHours())}:${pad2(a.getMinutes())}–${pad2(b.getHours())}:${pad2(b.getMinutes())}`;
+  return `${pad2(a.getHours())}:${pad2(a.getMinutes())} – ${pad2(b.getHours())}:${pad2(b.getMinutes())} (${formatSpanDuration(start, end)})`;
 }
 
-@Component
+export function formatBarCaption(title: string, start: number, end: number): string {
+  const name: string = title.trim();
+  const meta: string = formatBarTimeLabel(start, end);
+  if (name.length === 0) {
+    return meta;
+  }
+  return `${name}  ${meta}`;
+}
+
+@CustomDialog
 export struct CreateTaskPopup {
-  @Prop anchorX: number = 0;
-  @Prop anchorY: number = 0;
-  @Prop anchorW: number = 0;
-  @Prop anchorH: number = 20;
-  @Prop start: number = 0;
-  @Prop end: number = 0;
-  @Prop screenW: number = 800;
-  @Prop screenH: number = 400;
+  controller?: CustomDialogController;
+  start: number = 0;
+  end: number = 0;
   onConfirm: (title: string) => void = (_title: string) => {
   };
   onCancel: () => void = () => {
   };
   @State title: string = '';
 
-  build() {
-    Stack() {
-      Column()
-        .width('100%')
-        .height('100%')
-        .backgroundColor(0x1F000000)
-        .onClick(() => {
-          this.onCancel();
-        })
-      Column() {
-        Text('新任务')
-          .fontSize(18)
-          .fontWeight(FontWeight.Bold)
-        Text(formatBarTimeLabel(this.start, this.end))
-          .fontSize(12)
-          .fontColor(0x73000000)
-          .margin({ top: 4, bottom: 10 })
-        TextInput({ text: this.title, placeholder: '任务名' })
-          .onChange((value: string) => {
-            this.title = value;
-          })
-        Row() {
-          Button('取消', { type: ButtonType.Normal })
-            .backgroundColor(Color.Transparent)
-            .fontColor(0xFF457BD9)
-            .onClick(() => {
-              this.onCancel();
-            })
-          Button('确认')
-            .margin({ left: 8 })
-            .onClick(() => {
-              this.onConfirm(this.title);
-            })
-        }
-        .width('100%')
-        .justifyContent(FlexAlign.End)
-        .margin({ top: 12 })
-      }
-      .width(CREATE_POPUP_WIDTH)
-      .padding({ left: 16, right: 16, top: 14, bottom: 12 })
-      .backgroundColor(Color.White)
-      .borderRadius(12)
-      .shadow({ radius: 10, color: 0x42000000, offsetX: 0, offsetY: 4 })
-      .hitTestBehavior(HitTestMode.Block)
-      .position({
-        x: createPopupRect(this.anchorX, this.anchorY, this.anchorW, this.anchorH, this.screenW,
-          this.screenH).x,
-        y: createPopupRect(this.anchorX, this.anchorY, this.anchorW, this.anchorH, this.screenW,
-          this.screenH).y
-      })
+  private closeSelf(): void {
+    if (this.controller !== undefined) {
+      this.controller.close();
     }
-    .width('100%')
-    .height('100%')
+  }
+
+  private confirm(): void {
+    this.onConfirm(this.title);
+    this.closeSelf();
+  }
+
+  private cancel(): void {
+    this.onCancel();
+    this.closeSelf();
+  }
+
+  build() {
+    Column() {
+      Text(formatBarTimeLabel(this.start, this.end))
+        .fontSize(13)
+        .fontColor('#232429')
+        .width('100%')
+        .textAlign(TextAlign.Start)
+        .margin({ bottom: 6 })
+      TextInput({ text: this.title, placeholder: '任务名' })
+        .id('createTaskTitle')
+        .type(InputType.Normal)
+        .placeholderColor('#8FB4E8')
+        .caretColor('#457BD9')
+        .fontColor('#232429')
+        .backgroundColor(Color.Transparent)
+        .padding({ left: 0, right: 0, top: 8, bottom: 8 })
+        .height(40)
+        .width('100%')
+        .textAlign(TextAlign.Start)
+        .defaultFocus(true)
+        .onChange((value: string) => {
+          this.title = value;
+        })
+        .onSubmit((_type: EnterKeyType) => {
+          this.confirm();
+        })
+      Divider()
+        .color('#457BD9')
+        .strokeWidth(1)
+      Row() {
+        Button('取消', { type: ButtonType.Normal })
+          .fontSize(14)
+          .fontColor('#232429')
+          .height(40)
+          .backgroundColor('#EEF2F7')
+          .borderRadius(CREATE_POPUP_RADIUS)
+          .layoutWeight(1)
+          .onClick(() => {
+            this.cancel();
+          })
+        Button('创建', { type: ButtonType.Normal })
+          .fontSize(14)
+          .fontColor(Color.White)
+          .height(40)
+          .backgroundColor('#457BD9')
+          .borderRadius(CREATE_POPUP_RADIUS)
+          .margin({ left: 8 })
+          .layoutWeight(1)
+          .onClick(() => {
+            this.confirm();
+          })
+      }
+      .width('100%')
+      .margin({ top: 10 })
+    }
+    .width(CREATE_POPUP_WIDTH)
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+    .backgroundColor(Color.White)
+    .borderRadius(CREATE_POPUP_RADIUS)
+    .shadow({ radius: 10, color: 0x42000000, offsetX: 0, offsetY: 4 })
   }
 }

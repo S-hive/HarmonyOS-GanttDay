@@ -21,8 +21,19 @@ export default function tapClassifierTest() {
       expect(d).assertEqual(TapDecision.Delete);
     });
 
+    it('second_bar_tap_other_task_waits', 0, () => {
+      const d = TapClassifier.onDown(hit(10, 10, 'a'), 1000, hit(80, 10, 'b'), 1200);
+      expect(d).assertEqual(TapDecision.Wait);
+    });
+
     it('second_empty_tap_creates', 0, () => {
       const d = TapClassifier.onDown(hit(40, 40, null), 1000, hit(42, 41, null), 1200);
+      expect(d).assertEqual(TapDecision.Create);
+    });
+
+    it('empty_second_tap_within_500ms_still_creates', 0, () => {
+      expect(TapClassifier.DOUBLE_MS).assertEqual(500);
+      const d = TapClassifier.onDown(hit(40, 40, null), 1000, hit(42, 41, null), 1450);
       expect(d).assertEqual(TapDecision.Create);
     });
 

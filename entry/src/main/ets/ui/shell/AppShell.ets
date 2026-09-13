@@ -26,6 +26,7 @@ function weekOfMonth(date: Date): number {
 export struct AppShell {
   @State anchorDate: Date = dateOnly(new Date());
   @State navIndex: number = 0;
+  @State actualEdit: boolean = false;
   repo: TaskRepository = new MemoryTaskRepository();
 
   private shift(delta: number): void {
@@ -79,6 +80,9 @@ export struct AppShell {
             },
             onGoToday: () => {
               this.anchorDate = dateOnly(new Date());
+            },
+            onActualEditModeChanged: (active: boolean) => {
+              this.actualEdit = active;
             }
           })
             .width('100%')
@@ -110,12 +114,14 @@ export struct AppShell {
       .layoutWeight(1)
       .width('100%')
 
-      ViewNavBar({
-        selectedIndex: this.navIndex,
-        onSelect: (i: number) => {
-          this.navIndex = i;
-        }
-      })
+      if (!this.actualEdit) {
+        ViewNavBar({
+          selectedIndex: this.navIndex,
+          onSelect: (i: number) => {
+            this.navIndex = i;
+          }
+        })
+      }
     }
     .width('100%')
     .height('100%')

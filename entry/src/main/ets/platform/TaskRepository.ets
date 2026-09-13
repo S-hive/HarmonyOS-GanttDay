@@ -13,4 +13,6 @@ export interface TaskRepository {
   getById(id: string): Promise<Task | null>;
   upsert(task: Task): Promise<void>;
   delete(id: string): Promise<void>;
+  complete(id: string, actualStart: number, actualEnd: number): Promise<void>;
+  uncomplete(id: string): Promise<void>;
 }

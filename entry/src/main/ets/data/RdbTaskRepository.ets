@@ -60,9 +60,9 @@ export class RdbTaskRepository implements TaskRepository {
       'title': stored.title,
       'planned_start': stored.plannedStart,
       'planned_end': stored.plannedEnd,
-      'actual_start': null,
-      'actual_end': null,
-      'is_done': 0,
+      'actual_start': stored.actualStart,
+      'actual_end': stored.actualEnd,
+      'is_done': stored.isDone ? 1 : 0,
       'primary_tag_id': stored.primaryTagId,
       'auto_swatch_id': FactorySwatches.DEFAULT_ID,
       'override_swatch_id': null,
@@ -91,13 +91,40 @@ export class RdbTaskRepository implements TaskRepository {
       plannedEnd,
       FactorySwatches.DEFAULT_ID,
       task.createdAt,
-      null,
-      null,
-      false,
+      task.actualStart,
+      task.actualEnd,
+      task.isDone,
       task.primaryTagId,
       null,
       null
     );
+  }
+
+  async complete(id: string, actualStart: number, actualEnd: number): Promise<void> {
+    const found: Task | null = await this.getById(id);
+    if (found === null) {
+      return;
+    }
+    await this.upsert(found.copyWith(undefined, undefined, undefined, actualStart, actualEnd, true));
+  }
+
+  async uncomplete(id: string): Promise<void> {
+    const found: Task | null = await this.getById(id);
+    if (found === null) {
+      return;
+    }
+    await this.upsert(found.copyWith(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      true
+    ));
   }
 
   queryOverlapping(rangeStart: number, rangeEnd: number): Task[] {

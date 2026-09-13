@@ -78,6 +78,34 @@ export default function monthSpanLayoutTest() {
       expect(closeTo(early.endFrac, 2 + 1 / 8)).assertEqual(true);
       expect(closeTo(late.startFrac, 2 + 7 / 8)).assertEqual(true);
       expect(closeTo(late.endFrac, 2 + 8 / 8)).assertEqual(true);
+      expect(early.lane).assertEqual(late.lane);
+      expect(week.laneCount).assertEqual(1);
+    });
+
+    it('overlapping_same_day_bars_use_different_lanes', 0, () => {
+      const tasks: Task[] = [
+        task('wide', new Date(2026, 7, 5, 9), new Date(2026, 7, 5, 12), '宽'),
+        task('inner', new Date(2026, 7, 5, 10), new Date(2026, 7, 5, 11), '里')
+      ];
+      const weeks: MonthWeekLayout[] = buildMonthWeekLayouts(month, tasks);
+      const week: MonthWeekLayout = weekOn(weeks, new Date(2026, 7, 3));
+      const wide: MonthPlacedBar = barById(week.bars, 'wide');
+      const inner: MonthPlacedBar = barById(week.bars, 'inner');
+      expect(wide.lane === inner.lane).assertEqual(false);
+      expect(week.laneCount).assertEqual(2);
+    });
+
+    it('non_overlapping_different_days_share_a_lane', 0, () => {
+      const tasks: Task[] = [
+        task('mon', new Date(2026, 7, 3, 9), new Date(2026, 7, 3, 10), '一'),
+        task('wed', new Date(2026, 7, 5, 14), new Date(2026, 7, 5, 16), '三')
+      ];
+      const weeks: MonthWeekLayout[] = buildMonthWeekLayouts(month, tasks);
+      const week: MonthWeekLayout = weekOn(weeks, new Date(2026, 7, 3));
+      const mon: MonthPlacedBar = barById(week.bars, 'mon');
+      const wed: MonthPlacedBar = barById(week.bars, 'wed');
+      expect(mon.lane).assertEqual(wed.lane);
+      expect(week.laneCount).assertEqual(1);
     });
 
     it('cross_day_task_falls_back_to_0_24_when_no_same_day_tasks', 0, () => {

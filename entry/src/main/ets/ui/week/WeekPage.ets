@@ -1,3 +1,4 @@
+import { taskBarArgbFromTask, taskBarLabelArgb } from '../../domain/gantt/TaskBarTone';
 import { TapClassifier, TapDecision, TapHit } from '../../domain/gesture/TapClassifier';
 import { Task } from '../../domain/models/Task';
 import { dateOnly, mondayOnOrBefore } from '../../domain/time/Calendar';
@@ -5,10 +6,15 @@ import { WallClock } from '../../domain/time/WallClock';
 import { layoutWeekSlots, WeekSlot } from '../../domain/week/WeekColumnLayout';
 import { MemoryTaskRepository } from '../../data/MemoryTaskRepository';
 import { TaskListener, TaskRepository } from '../../platform/TaskRepository';
+import {
+  BAR_DETAIL_ESTIMATED_H,
+  BAR_DETAIL_ESTIMATED_W,
+  BarDetailPopup,
+  barDetailPopupOrigin,
+  formatBarHoverMeta
+} from '../common/BarDetailPopup';
 import { DeleteConfirm } from '../common/DeleteConfirm';
 import { persistOrToast } from '../common/SaveFailureToast';
-import { SideDrawer } from '../common/SideDrawer';
-import { TaskForm, taskAfterFormClose } from '../task/TaskForm';
 import { AppColors } from '../theme/AppColors';
 
 export const WEEK_HOUR_HEIGHT: number = 48;
@@ -20,7 +26,104 @@ export const WEEK_DAY_BOUNDARY_WIDTH: number = 1;
 export const WEEK_DAY_BOUNDARY_STRIDE: number = WEEK_DAY_BOUNDARY_GAP * 2 + WEEK_DAY_BOUNDARY_WIDTH;
 export const WEEK_SCROLL_START_HOUR: number = 8;
 export const WEEK_DAY_BOUNDARY_COLOR: number = 0xFFC62828;
-export const WEEK_BAR_RADIUS: number = 4;
+export const WEEK_BAR_GAP: number = 2;
+export const WEEK_BAR_TITLE_SIZE: number = 12;
+export const WEEK_BAR_TITLE_EDGE: number = 2;
+export const WEEK_BAR_TITLE_MAX_COLUMNS: number = 4;
+
+export class WeekBarCaption {
+  key: string;
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: number;
+
+  constructor(
+    key: string,
+    title: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    color: number
+  ) {
+    this.key = key;
+    this.title = title;
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+    this.color = color;
+  }
+}
+
+export class WeekBarTitleLayout {
+  fontSize: number;
+  line1: string;
+  line2: string;
+
+  constructor(fontSize: number, line1: string, line2: string) {
+    this.fontSize = fontSize;
+    this.line1 = line1;
+    this.line2 = line2;
+  }
+}
+
+function weekTitlePrefixLen(
+  title: string,
+  fontSize: number,
+  maxW: number,
+  measure: (text: string, size: number) => number
+): number {
+  let n: number = 0;
+  while (n < title.length) {
+    if (measure(title.substring(0, n + 1), fontSize) <= maxW) {
+      n++;
+    } else {
+      break;
+    }
+  }
+  return n;
+}
+
+export function layoutWeekBarTitle(
+  title: string,
+  barW: number,
+  barH: number,
+  measure: (text: string, size: number) => number,
+  columnCount: number = 1
+): WeekBarTitleLayout | null {
+  if (title.length === 0 || columnCount > WEEK_BAR_TITLE_MAX_COLUMNS) {
+    return null;
+  }
+  const maxW: number = barW - 2 * WEEK_BAR_TITLE_EDGE;
+  if (maxW <= 0 || barH <= 0) {
+    return null;
+  }
+  const first: string = title.substring(0, 1);
+  const firstW: number = measure(first, WEEK_BAR_TITLE_SIZE);
+  if (firstW > maxW) {
+    return null;
+  }
+  if (measure(title, WEEK_BAR_TITLE_SIZE) <= maxW) {
+    return new WeekBarTitleLayout(WEEK_BAR_TITLE_SIZE, title, '');
+  }
+  const twoLineH: number = WEEK_BAR_TITLE_EDGE + 2 * WEEK_BAR_TITLE_SIZE;
+  const prefix: number = weekTitlePrefixLen(title, WEEK_BAR_TITLE_SIZE, maxW, measure);
+  if (prefix <= 0) {
+    return null;
+  }
+  if (barH >= twoLineH) {
+    return new WeekBarTitleLayout(
+      WEEK_BAR_TITLE_SIZE,
+      title.substring(0, prefix),
+      title.substring(prefix)
+    );
+  }
+  return new WeekBarTitleLayout(WEEK_BAR_TITLE_SIZE, title.substring(0, prefix), '');
+}
 
 const WEEKDAY_LABELS: string[] = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -30,13 +133,25 @@ export class WeekBlockRect {
   y: number;
   width: number;
   height: number;
+  dayIndex: number;
+  columnCount: number;
 
-  constructor(taskId: string, x: number, y: number, width: number, height: number) {
+  constructor(
+    taskId: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    dayIndex: number = 0,
+    columnCount: number = 1
+  ) {
     this.taskId = taskId;
     this.x = x;
     this.y = y;
     this.width = width;
     this.height = height;
+    this.dayIndex = dayIndex;
+    this.columnCount = columnCount;
   }
 }
 
@@ -69,24 +184,32 @@ export function weekDayLeft(dayIndex: number, dayWidth: number): number {
 }
 
 export function weekBlockRect(slot: WeekSlot, dayWidth: number): WeekBlockRect {
-  const colW: number = dayWidth / slot.columnCount;
+  const gaps: number = WEEK_BAR_GAP * Math.max(0, slot.columnCount - 1);
+  const colW: number = (dayWidth - gaps) / slot.columnCount;
   return new WeekBlockRect(
     slot.taskId,
-    weekDayLeft(slot.dayIndex, dayWidth) + slot.columnIndex * colW,
+    weekDayLeft(slot.dayIndex, dayWidth) + slot.columnIndex * (colW + WEEK_BAR_GAP),
     slot.topFrac * WEEK_DAY_HOURS * WEEK_HOUR_HEIGHT,
     colW,
-    slot.heightFrac * WEEK_DAY_HOURS * WEEK_HOUR_HEIGHT
+    slot.heightFrac * WEEK_DAY_HOURS * WEEK_HOUR_HEIGHT,
+    slot.dayIndex,
+    slot.columnCount
   );
 }
 
-export function hitTestWeekBlock(rects: WeekBlockRect[], x: number, y: number): string | null {
+export function hitTestWeekBlockRect(rects: WeekBlockRect[], x: number, y: number): WeekBlockRect | null {
   for (let i = rects.length - 1; i >= 0; i--) {
     const r: WeekBlockRect = rects[i];
     if (x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height) {
-      return r.taskId;
+      return r;
     }
   }
   return null;
+}
+
+export function hitTestWeekBlock(rects: WeekBlockRect[], x: number, y: number): string | null {
+  const hit: WeekBlockRect | null = hitTestWeekBlockRect(rects, x, y);
+  return hit === null ? null : hit.taskId;
 }
 
 function hourRange(): number[] {
@@ -113,33 +236,6 @@ function lengthVp(value: Length): number {
   return parseFloat(`${value}`);
 }
 
-function addRoundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  radius: number
-): void {
-  let rad: number = radius;
-  if (rad * 2 > w) {
-    rad = w / 2;
-  }
-  if (rad * 2 > h) {
-    rad = h / 2;
-  }
-  ctx.moveTo(x + rad, y);
-  ctx.lineTo(x + w - rad, y);
-  ctx.arcTo(x + w, y, x + w, y + rad, rad);
-  ctx.lineTo(x + w, y + h - rad);
-  ctx.arcTo(x + w, y + h, x + w - rad, y + h, rad);
-  ctx.lineTo(x + rad, y + h);
-  ctx.arcTo(x, y + h, x, y + h - rad, rad);
-  ctx.lineTo(x, y + rad);
-  ctx.arcTo(x, y, x + rad, y, rad);
-  ctx.closePath();
-}
-
 class PageTaskSink implements TaskListener {
   apply: (tasks: Task[]) => void = (_tasks: Task[]): void => {
   };
@@ -158,10 +254,13 @@ export struct WeekPage {
   @State canvasWidthVp: number = 700;
   @State viewportWidthVp: number = 800;
   @State viewportHeightVp: number = 400;
-  @State drawerOpen: boolean = false;
-  @State formTitle: string = '';
-  @State formStart: number = 0;
-  @State formEnd: number = 0;
+  @State detailOpen: boolean = false;
+  @State detailTaskId: string = '';
+  @State detailTitle: string = '';
+  @State detailMeta: string = '';
+  @State detailX: number = 0;
+  @State detailY: number = 0;
+  @State barCaptions: WeekBarCaption[] = [];
 
   private settings: RenderingContextSettings = new RenderingContextSettings(true);
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
@@ -180,7 +279,7 @@ export struct WeekPage {
   private prevTapMs: number = 0;
   private pendingHit: TapHit | null = null;
   private tapTimerId: number = -1;
-  private formBase: Task | null = null;
+  private detailBar: WeekBlockRect | null = null;
 
   aboutToAppear(): void {
     this.sink.apply = (list: Task[]): void => {
@@ -193,6 +292,7 @@ export struct WeekPage {
   aboutToUpdate(): void {
     const week0: number = this.week0Of();
     if (week0 !== this.boundWeek0) {
+      this.dismissDetail();
       this.bindWatch();
       this.didFitScroll = false;
       this.scrollToEight();
@@ -201,6 +301,7 @@ export struct WeekPage {
 
   aboutToDisappear(): void {
     this.cancelPendingTap();
+    this.dismissDetail();
     this.unwatch();
     this.unwatch = (): void => {
     };
@@ -272,7 +373,7 @@ export struct WeekPage {
       return;
     }
     if (TapClassifier.onWaitTimeout(hit) === TapDecision.OpenForm && hit.taskId !== null) {
-      this.openForm(hit.taskId);
+      this.showDetail(hit.taskId, hit.x, hit.y);
     }
   }
 
@@ -296,38 +397,62 @@ export struct WeekPage {
     }
     this.cancelPendingTap();
     if (decision === TapDecision.Delete && curr.taskId !== null) {
+      this.dismissDetail();
       this.askDelete(curr.taskId);
     }
   }
 
-  private openForm(taskId: string): void {
-    const task: Task | null = this.findTask(taskId);
-    if (task === null) {
+  private currentScrollY(): number {
+    return parseFloat(`${this.scroller.currentOffset().yOffset}`);
+  }
+
+  private placeDetail(popupW: number, popupH: number): void {
+    const bar: WeekBlockRect | null = this.detailBar;
+    if (bar === null) {
       return;
     }
-    this.formBase = task;
-    this.formTitle = task.title;
-    this.formStart = task.plannedStart;
-    this.formEnd = task.plannedEnd;
-    this.drawerOpen = true;
+    const scrollY: number = this.currentScrollY();
+    const origin = barDetailPopupOrigin(
+      WEEK_GUTTER_WIDTH + bar.x,
+      WEEK_HEADER_HEIGHT + bar.y - scrollY,
+      WEEK_HEADER_HEIGHT + bar.y + bar.height - scrollY,
+      this.viewportWidthVp,
+      this.viewportHeightVp,
+      popupW,
+      popupH
+    );
+    if (origin.x !== this.detailX || origin.y !== this.detailY) {
+      this.detailX = origin.x;
+      this.detailY = origin.y;
+    }
+  }
+
+  private showDetail(taskId: string, x: number, y: number): void {
+    const task: Task | null = this.findTask(taskId);
+    const bar: WeekBlockRect | null = hitTestWeekBlockRect(this.hitRects, x, y);
+    if (task === null || bar === null) {
+      return;
+    }
+    this.detailBar = bar;
+    this.detailTaskId = task.id;
+    this.detailTitle = task.title;
+    this.detailMeta = formatBarHoverMeta(task.plannedStart, task.plannedEnd, this.dateOfDay(bar.dayIndex));
+    this.detailOpen = true;
+    this.placeDetail(BAR_DETAIL_ESTIMATED_W, BAR_DETAIL_ESTIMATED_H);
+  }
+
+  private dismissDetail(): void {
+    this.detailOpen = false;
+    this.detailTaskId = '';
+    this.detailBar = null;
   }
 
   onBackPress(): boolean {
-    if (!this.drawerOpen) {
+    if (!this.detailOpen) {
       return false;
     }
-    this.closeDrawer();
+    this.dismissDetail();
     return true;
-  }
-
-  private closeDrawer(): void {
-    const base: Task | null = this.formBase;
-    this.drawerOpen = false;
-    this.formBase = null;
-    if (base === null) {
-      return;
-    }
-    persistOrToast(this.repo.upsert(taskAfterFormClose(base, this.formTitle, this.formStart, this.formEnd)));
   }
 
   private async askDelete(taskId: string): Promise<void> {
@@ -339,21 +464,8 @@ export struct WeekPage {
     if (!ok) {
       return;
     }
-    if (this.formBase !== null && this.formBase.id === taskId) {
-      this.drawerOpen = false;
-      this.formBase = null;
-    }
+    this.dismissDetail();
     await persistOrToast(this.repo.delete(taskId));
-  }
-
-  private deleteFromForm(): void {
-    const base: Task | null = this.formBase;
-    this.drawerOpen = false;
-    this.formBase = null;
-    if (base === null) {
-      return;
-    }
-    persistOrToast(this.repo.delete(base.id));
   }
 
   private rebuildRects(): void {
@@ -423,7 +535,6 @@ export struct WeekPage {
     ctx.setTransform(sx, 0, 0, sy, 0, 0);
     this.paintGrid(ctx);
     this.paintBlocks(ctx);
-    this.paintNowLine(ctx);
   }
 
   private paintGrid(ctx: CanvasRenderingContext2D): void {
@@ -452,6 +563,7 @@ export struct WeekPage {
   }
 
   private paintBlocks(ctx: CanvasRenderingContext2D): void {
+    const captions: WeekBarCaption[] = [];
     for (let i = 0; i < this.hitRects.length; i++) {
       const b: WeekBlockRect = this.hitRects[i];
       let w: number = b.width;
@@ -462,36 +574,27 @@ export struct WeekPage {
       if (h < 2) {
         h = 2;
       }
-      ctx.fillStyle = argbToCss(AppColors.AZURE);
-      ctx.beginPath();
-      addRoundRect(ctx, b.x, b.y, w, h, WEEK_BAR_RADIUS);
-      ctx.fill();
+      const task: Task | null = this.findTask(b.taskId);
+      const fill: number = task === null ?
+        AppColors.AZURE :
+        taskBarArgbFromTask(task, WallClock.minutes(new Date()));
+      ctx.fillStyle = argbToCss(fill);
+      ctx.fillRect(b.x, b.y, w, h);
       const title: string | undefined = this.titles.get(b.taskId);
       const label: string = title === undefined ? '' : title;
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(b.x, b.y, w, h);
-      ctx.clip();
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(label, b.x + 4, b.y + 4);
-      ctx.restore();
+      if (b.columnCount <= WEEK_BAR_TITLE_MAX_COLUMNS && label.length > 0) {
+        captions.push(new WeekBarCaption(
+          `${b.taskId}:${i}`,
+          label,
+          b.x + WEEK_BAR_TITLE_EDGE,
+          b.y + WEEK_BAR_TITLE_EDGE,
+          Math.max(0, w - 2 * WEEK_BAR_TITLE_EDGE),
+          0,
+          taskBarLabelArgb(fill)
+        ));
+      }
     }
-  }
-
-  private paintNowLine(ctx: CanvasRenderingContext2D): void {
-    const today: number = this.todayIndex();
-    if (today < 0 || today > 6) {
-      return;
-    }
-    const now: Date = new Date();
-    const y: number = (now.getHours() * 60 + now.getMinutes()) / WallClock.MINUTES_PER_DAY * weekBodyHeight();
-    const dayWidth: number = weekDayWidth(this.canvasWidthVp);
-    const x: number = weekDayLeft(today, dayWidth);
-    ctx.fillStyle = argbToCss(WEEK_DAY_BOUNDARY_COLOR);
-    ctx.fillRect(x, y - 0.5, dayWidth, 1);
+    this.barCaptions = captions;
   }
 
   private onCanvasTouch(event: TouchEvent): void {
@@ -506,9 +609,13 @@ export struct WeekPage {
       const taskId: string | null = hitTestWeekBlock(this.hitRects, x, y);
       if (taskId === null) {
         this.cancelPendingTap();
+        this.dismissDetail();
         return;
       }
       event.stopPropagation();
+      if (this.detailOpen && this.detailTaskId !== taskId) {
+        this.showDetail(taskId, x, y);
+      }
       if (this.tapTimerId !== -1) {
         clearTimeout(this.tapTimerId);
         this.tapTimerId = -1;
@@ -548,7 +655,7 @@ export struct WeekPage {
   headerDay(dayIndex: number) {
     Column() {
       Text(this.headerLabel(dayIndex))
-        .fontSize(12)
+        .fontSize(WEEK_BAR_TITLE_SIZE)
         .fontWeight(this.dayIsToday(dayIndex) ? FontWeight.Medium : FontWeight.Regular)
         .fontColor(this.dayIsToday(dayIndex) ? AppColors.AZURE : Color.Black)
         .maxLines(1)
@@ -602,16 +709,32 @@ export struct WeekPage {
             .width(WEEK_GUTTER_WIDTH)
             .height(weekBodyHeight())
 
-            Canvas(this.ctx)
-              .width(this.canvasWidthVp)
-              .height(weekBodyHeight())
-              .onReady(() => {
-                this.canvasReady = true;
-                this.redraw();
-              })
-              .onTouch((event: TouchEvent) => {
-                this.onCanvasTouch(event);
-              })
+            Stack({ alignContent: Alignment.TopStart }) {
+              Canvas(this.ctx)
+                .width('100%')
+                .height('100%')
+                .onReady(() => {
+                  this.canvasReady = true;
+                  this.redraw();
+                })
+                .onTouch((event: TouchEvent) => {
+                  this.onCanvasTouch(event);
+                })
+              ForEach(this.barCaptions, (cap: WeekBarCaption) => {
+                Text(cap.title)
+                  .fontSize(WEEK_BAR_TITLE_SIZE)
+                  .fontWeight(FontWeight.Regular)
+                  .fontColor(cap.color)
+                  .textAlign(TextAlign.Start)
+                  .maxLines(2)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .width(cap.width)
+                  .position({ x: cap.x, y: cap.y })
+                  .hitTestBehavior(HitTestMode.None)
+              }, (cap: WeekBarCaption) => cap.key)
+            }
+            .width(this.canvasWidthVp)
+            .height(weekBodyHeight())
           }
           .width('100%')
           .height(weekBodyHeight())
@@ -619,6 +742,11 @@ export struct WeekPage {
         }
         .scrollable(ScrollDirection.Vertical)
         .scrollBar(BarState.Off)
+        .onDidScroll((_xOffset: number, _yOffset: number, _state: ScrollState) => {
+          if (this.detailOpen) {
+            this.dismissDetail();
+          }
+        })
         .width('100%')
         .layoutWeight(1)
       }
@@ -628,22 +756,17 @@ export struct WeekPage {
         this.applyViewport(lengthVp(area.width), lengthVp(area.height));
       })
 
-      if (this.drawerOpen) {
-        SideDrawer({
-          screenWidth: this.viewportWidthVp,
-          onClose: () => {
-            this.closeDrawer();
-          }
-        }) {
-          TaskForm({
-            title: $formTitle,
-            plannedStart: $formStart,
-            plannedEnd: $formEnd,
-            onDelete: () => {
-              this.deleteFromForm();
-            }
+      if (this.detailOpen) {
+        BarDetailPopup({
+          title: this.detailTitle,
+          meta: this.detailMeta
+        })
+          .id(`week-detail-${this.detailTaskId}`)
+          .position({ x: this.detailX, y: this.detailY })
+          .hitTestBehavior(HitTestMode.None)
+          .onAreaChange((_old: Area, area: Area) => {
+            this.placeDetail(lengthVp(area.width), lengthVp(area.height));
           })
-        }
       }
     }
     .width('100%')

@@ -76,6 +76,14 @@ export function proposeCreateAt(geo: GanttGeometry, x: number): Span {
   return new Span(start, start + 60);
 }
 
+export function proposeCreate(geo: GanttGeometry, x0: number, x1: number): Span {
+  const left: number = clampXToView(geo, Math.min(x0, x1));
+  const right: number = clampXToView(geo, Math.max(x0, x1));
+  const start: number = geo.snap(geo.timeOf(left));
+  const end: number = geo.clampDuration(start, geo.snap(geo.timeOf(right)));
+  return clampSpanToView(geo, start, end);
+}
+
 export function expandProbeFromOverscroll(
   day0: number,
   maxEnd: number,

@@ -1,11 +1,17 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
+  DAY_DRAG_START_SLOP,
   HIT_EMPTY,
   HIT_MOVE,
   HIT_RESIZE_END,
   HIT_RESIZE_START,
   HitBar,
-  hitTest
+  canvasXFromTouch,
+  hitTest,
+  laneIndexFromY,
+  movementExceedsSlop,
+  shouldCancelDoubleTapOnMove,
+  snapshotTaskLanes
 } from '../../../main/ets/ui/day/DayHitTest';
 
 function bar(
@@ -86,6 +92,52 @@ export default function dayHitTestTest() {
       const hit = hitTest([nextDay], 100, 50, 8);
       expect(hit.taskId).assertEqual('ovn');
       expect(hit.kind).assertEqual(HIT_MOVE);
+    });
+
+    it('maps_viewport_touch_to_canvas_x_with_scroll', 0, () => {
+      expect(canvasXFromTouch(120, 400, 1400)).assertEqual(520);
+    });
+
+    it('keeps_canvas_local_touch_when_already_past_scroll', 0, () => {
+      expect(canvasXFromTouch(580, 400, 1400)).assertEqual(580);
+    });
+
+    it('finger_jitter_under_32vp_does_not_start_drag', 0, () => {
+      expect(DAY_DRAG_START_SLOP).assertEqual(32);
+      expect(movementExceedsSlop(12, 8, 10, DAY_DRAG_START_SLOP)).assertEqual(false);
+    });
+
+    it('finger_move_over_32vp_starts_drag', 0, () => {
+      expect(movementExceedsSlop(30, 20, 0, DAY_DRAG_START_SLOP)).assertEqual(true);
+    });
+
+    it('empty_first_tap_jitter_keeps_double_tap', 0, () => {
+      expect(shouldCancelDoubleTapOnMove(null)).assertFalse();
+    });
+
+    it('bar_first_tap_move_cancels_double_tap', 0, () => {
+      expect(shouldCancelDoubleTapOnMove('a')).assertTrue();
+    });
+
+    it('create_press_in_header_uses_lane_0', 0, () => {
+      expect(laneIndexFromY(20, 33, 30)).assertEqual(0);
+    });
+
+    it('create_press_on_second_row_uses_lane_1', 0, () => {
+      expect(laneIndexFromY(63, 33, 30)).assertEqual(1);
+    });
+
+    it('create_press_on_third_row_uses_lane_2', 0, () => {
+      expect(laneIndexFromY(93, 33, 30)).assertEqual(2);
+    });
+
+    it('snapshot_keeps_each_bar_on_its_row', 0, () => {
+      const lanes = snapshotTaskLanes([
+        bar('a', 100, 35, 80, 26),
+        bar('b', 200, 65, 80, 26)
+      ], 33, 30);
+      expect(lanes.get('a')).assertEqual(0);
+      expect(lanes.get('b')).assertEqual(1);
     });
   });
 }

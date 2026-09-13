@@ -49,6 +49,46 @@ export class MemoryTaskRepository implements TaskRepository {
     return Promise.resolve();
   }
 
+  complete(id: string, actualStart: number, actualEnd: number): Promise<void> {
+    const idx: number = this.indexOfId(id);
+    if (idx < 0) {
+      return Promise.resolve();
+    }
+    const t: Task = this.tasks[idx];
+    this.tasks[idx] = t.copyWith(
+      undefined,
+      undefined,
+      undefined,
+      actualStart,
+      actualEnd,
+      true
+    );
+    this.notifyAll();
+    return Promise.resolve();
+  }
+
+  uncomplete(id: string): Promise<void> {
+    const idx: number = this.indexOfId(id);
+    if (idx < 0) {
+      return Promise.resolve();
+    }
+    const t: Task = this.tasks[idx];
+    this.tasks[idx] = t.copyWith(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      true
+    );
+    this.notifyAll();
+    return Promise.resolve();
+  }
+
   delete(id: string): Promise<void> {
     const kept: Task[] = [];
     for (let i = 0; i < this.tasks.length; i++) {

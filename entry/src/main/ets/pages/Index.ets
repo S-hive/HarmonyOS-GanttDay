@@ -4,6 +4,7 @@ import { RdbTaskRepository } from '../data/RdbTaskRepository';
 import { TaskRepository } from '../platform/TaskRepository';
 import { BOOT_ERROR, BOOT_LOADING, BOOT_READY, BootView, bootViewAfterOpen } from '../ui/common/BootState';
 import { DbErrorScreen } from '../ui/common/DbErrorScreen';
+import { consumeActualEditBack } from '../domain/gantt/ActualEdit';
 import { consumeDrawerSystemBack } from '../ui/common/SideDrawer';
 import { AppShell } from '../ui/shell/AppShell';
 
@@ -19,7 +20,10 @@ struct Index {
   }
 
   onBackPress(): boolean {
-    return consumeDrawerSystemBack();
+    if (consumeDrawerSystemBack()) {
+      return true;
+    }
+    return consumeActualEditBack();
   }
 
   private applyBoot(ok: boolean, path: string): void {
@@ -49,6 +53,8 @@ struct Index {
     Column() {
       if (this.phase === BOOT_READY && this.repo !== null) {
         AppShell({ repo: this.repo })
+          .width('100%')
+          .height('100%')
       } else if (this.phase === BOOT_ERROR) {
         DbErrorScreen({
           path: this.errorPath,

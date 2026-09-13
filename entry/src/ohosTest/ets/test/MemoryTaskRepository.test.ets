@@ -86,6 +86,29 @@ export default function memoryTaskRepositoryTest() {
       expect(got).assertNull();
     });
 
+    it('complete_sets_actuals_and_uncomplete_clears_them', 0, async () => {
+      const repo: MemoryTaskRepository = new MemoryTaskRepository();
+      await repo.upsert(overnight());
+      const start: number = overnight().plannedStart - 15;
+      const end: number = overnight().plannedEnd + 15;
+      await repo.complete('night', start, end);
+      let got: Task | null = await repo.getById('night');
+      expect(got === null).assertFalse();
+      if (got !== null) {
+        expect(got.isDone).assertTrue();
+        expect(got.actualStart).assertEqual(start);
+        expect(got.actualEnd).assertEqual(end);
+      }
+      await repo.uncomplete('night');
+      got = await repo.getById('night');
+      expect(got === null).assertFalse();
+      if (got !== null) {
+        expect(got.isDone).assertFalse();
+        expect(got.actualStart).assertNull();
+        expect(got.actualEnd).assertNull();
+      }
+    });
+
     it('upsert_empty_title_rejects', 0, async () => {
       const repo: MemoryTaskRepository = new MemoryTaskRepository();
       const start: number = WallClock.minutes(new Date(2026, 7, 8, 23, 0));

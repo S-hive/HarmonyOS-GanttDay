@@ -273,6 +273,7 @@ function layoutWeek(
     windows.push(dayTimeWindowFor(weekStart + d * WallClock.MINUTES_PER_DAY, tasks));
   }
 
+  // Month packs non-overlapping spans onto one row; day view uses assignExclusive.
   const lanes: Map<string, number> = LaneLayout.assign(segs);
   const bars: MonthPlacedBar[] = [];
   for (let i = 0; i < segs.length; i++) {

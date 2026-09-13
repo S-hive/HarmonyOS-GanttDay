@@ -2,6 +2,7 @@ import { describe, it, expect } from '@ohos/hypium';
 import { GanttGeometry } from '../../../main/ets/domain/gantt/GanttGeometry';
 import {
   expandProbeFromOverscroll,
+  proposeCreate,
   proposeCreateAt,
   proposeMove,
   proposeResizeEnd,
@@ -31,6 +32,18 @@ export default function dayGestureMathTest() {
       const span: Span = proposeCreateAt(geo, geo.xOf(day + 9 * 60 + 7));
       expect(span.start).assertEqual(day + 9 * 60);
       expect(span.end).assertEqual(day + 10 * 60);
+    });
+
+    it('proposeCreate_drag_range_snaps_and_clamps', 0, () => {
+      const span: Span = proposeCreate(geo, geo.xOf(day + 9 * 60), geo.xOf(day + 11 * 60 + 8));
+      expect(span.start).assertEqual(day + 9 * 60);
+      expect(span.end).assertEqual(day + 11 * 60 + 15);
+    });
+
+    it('proposeCreate_swapped_ends_still_orders_start_before_end', 0, () => {
+      const span: Span = proposeCreate(geo, geo.xOf(day + 12 * 60), geo.xOf(day + 10 * 60));
+      expect(span.start).assertEqual(day + 10 * 60);
+      expect(span.end).assertEqual(day + 12 * 60);
     });
 
     it('proposeMove_keeps_duration_and_shifts_one_hour', 0, () => {

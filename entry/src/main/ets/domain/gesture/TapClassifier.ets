@@ -14,7 +14,7 @@ export enum TapDecision {
 
 export class TapClassifier {
   static readonly HIT_SLOP_VP: number = 32;
-  static readonly DOUBLE_MS: number = 300;
+  static readonly DOUBLE_MS: number = 500;
 
   static onDown(prev: TapHit | null, prevMs: number, curr: TapHit, nowMs: number): TapDecision {
     if (prev === null || nowMs - prevMs > TapClassifier.DOUBLE_MS) {
@@ -23,6 +23,10 @@ export class TapClassifier {
 
     if (prev.taskId !== null && prev.taskId === curr.taskId) {
       return TapDecision.Delete;
+    }
+
+    if (prev.taskId !== null && curr.taskId !== null && prev.taskId !== curr.taskId) {
+      return TapDecision.Wait;
     }
 
     if (prev.taskId === null && curr.taskId === null) {

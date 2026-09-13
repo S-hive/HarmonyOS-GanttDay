@@ -2,6 +2,7 @@ import { describe, it, expect } from '@ohos/hypium';
 import { MonthPlacedBar, MonthWeekLayout } from '../../../main/ets/domain/month/MonthSpanLayout';
 import {
   MONTH_BAR_GAP,
+  MONTH_BAR_H_GAP,
   MONTH_BAR_HEIGHT,
   MONTH_BAR_MIN_WIDTH,
   MONTH_DATE_ROW_HEIGHT,
@@ -15,7 +16,9 @@ import {
   monthBarLeft,
   monthBarTop,
   monthBarWidth,
-  monthOpenDayFromHit
+  monthNeedsScroll,
+  monthOpenDayFromHit,
+  monthWeekRowHeights
 } from '../../../main/ets/ui/month/MonthPage';
 
 function daysFrom(monday: Date): Date[] {
@@ -49,7 +52,12 @@ export default function monthPageTest() {
 
     it('maps_start_end_frac_across_week_width', 0, () => {
       expect(monthBarLeft(2, weekWidth)).assertEqual(2 / 7 * weekWidth);
-      expect(monthBarWidth(2, 3, weekWidth)).assertEqual((3 - 2) / 7 * weekWidth);
+      expect(monthBarWidth(2, 3, weekWidth)).assertEqual((3 - 2) / 7 * weekWidth - MONTH_BAR_H_GAP);
+    });
+
+    it('leaves_1px_between_adjacent_bars', 0, () => {
+      const right: number = monthBarLeft(2, weekWidth) + monthBarWidth(2, 3, weekWidth);
+      expect(monthBarLeft(3, weekWidth) - right).assertEqual(MONTH_BAR_H_GAP);
     });
 
     it('enforces_min_bar_width_4vp', 0, () => {
@@ -93,9 +101,7 @@ export default function monthPageTest() {
       const week: MonthWeekLayout = weekOf(new Date(2026, 7, 10), [], overflow, 1);
       const dayIndex: number = 0;
       const x: number = (dayIndex + 0.5) / 7 * weekWidth;
-      const y: number = MONTH_DATE_ROW_HEIGHT +
-        (MONTH_BAR_HEIGHT + MONTH_BAR_GAP) +
-        MONTH_OVERFLOW_HEIGHT / 2;
+      const y: number = 8;
       const hit: MonthHitResult = hitTestMonthWeek(week, month, weekWidth, x, y);
       expect(hit.kind).assertEqual(MONTH_HIT_OVERFLOW);
       expect(isSameDate(hit.openDay, new Date(2026, 7, 10))).assertEqual(true);
@@ -115,6 +121,21 @@ export default function monthPageTest() {
       const hit: MonthHitResult = hitTestMonthWeek(week, month, weekWidth, x, 6);
       expect(hit.kind).assertEqual(MONTH_HIT_NONE);
       expect(monthOpenDayFromHit(hit)).assertNull();
+    });
+
+    it('tiles_weeks_to_equal_viewport_height_when_content_fits', 0, () => {
+      const heights: number[] = monthWeekRowHeights([40, 40, 40, 40, 40], 500);
+      expect(heights.length).assertEqual(5);
+      expect(heights[0]).assertEqual(100);
+      expect(heights[4]).assertEqual(100);
+      expect(monthNeedsScroll([40, 40, 40, 40, 40], 500)).assertEqual(false);
+    });
+
+    it('still_tiles_equal_height_when_a_week_content_is_taller', 0, () => {
+      const mins: number[] = [40, 40, 180, 40, 40];
+      const heights: number[] = monthWeekRowHeights(mins, 500);
+      expect(heights[2]).assertEqual(100);
+      expect(heights[0]).assertEqual(100);
     });
 
     it('hit_kind_is_never_delete', 0, () => {
