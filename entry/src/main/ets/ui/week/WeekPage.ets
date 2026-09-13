@@ -6,6 +6,7 @@ import { layoutWeekSlots, WeekSlot } from '../../domain/week/WeekColumnLayout';
 import { MemoryTaskRepository } from '../../data/MemoryTaskRepository';
 import { TaskListener, TaskRepository } from '../../platform/TaskRepository';
 import { DeleteConfirm } from '../common/DeleteConfirm';
+import { persistOrToast } from '../common/SaveFailureToast';
 import { SideDrawer } from '../common/SideDrawer';
 import { TaskForm, taskAfterFormClose } from '../task/TaskForm';
 import { AppColors } from '../theme/AppColors';
@@ -318,7 +319,7 @@ export struct WeekPage {
     if (base === null) {
       return;
     }
-    this.repo.upsert(taskAfterFormClose(base, this.formTitle, this.formStart, this.formEnd));
+    persistOrToast(this.repo.upsert(taskAfterFormClose(base, this.formTitle, this.formStart, this.formEnd)));
   }
 
   private async askDelete(taskId: string): Promise<void> {
@@ -334,7 +335,7 @@ export struct WeekPage {
       this.drawerOpen = false;
       this.formBase = null;
     }
-    await this.repo.delete(taskId);
+    await persistOrToast(this.repo.delete(taskId));
   }
 
   private deleteFromForm(): void {
@@ -344,7 +345,7 @@ export struct WeekPage {
     if (base === null) {
       return;
     }
-    this.repo.delete(base.id);
+    persistOrToast(this.repo.delete(base.id));
   }
 
   private rebuildRects(): void {

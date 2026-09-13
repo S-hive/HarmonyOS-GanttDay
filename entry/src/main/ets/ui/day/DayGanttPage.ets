@@ -9,9 +9,11 @@ import { GanttSegment } from '../../domain/models/GanttSegment';
 import { Task } from '../../domain/models/Task';
 import { dateOnly } from '../../domain/time/Calendar';
 import { WallClock } from '../../domain/time/WallClock';
+import { util } from '@kit.ArkTS';
 import { MemoryTaskRepository } from '../../data/MemoryTaskRepository';
 import { TaskListener, TaskRepository } from '../../platform/TaskRepository';
 import { DeleteConfirm } from '../common/DeleteConfirm';
+import { persistOrToast } from '../common/SaveFailureToast';
 import { SideDrawer } from '../common/SideDrawer';
 import { TaskForm, taskAfterFormClose } from '../task/TaskForm';
 import { AppColors } from '../theme/AppColors';
@@ -274,7 +276,7 @@ export struct DayGanttPage {
 
   private beginCreate(canvasX: number): void {
     const span = proposeCreateAt(this.gestureGeo(), canvasX);
-    const id: string = `create-${Date.now()}`;
+    const id: string = util.generateRandomUUID();
     this.createDraft = new Task(
       id,
       '',
@@ -325,14 +327,14 @@ export struct DayGanttPage {
       this.redraw();
       return;
     }
-    this.repo.upsert(new Task(
+    persistOrToast(this.repo.upsert(new Task(
       draft.id,
       trimmed,
       draft.plannedStart,
       draft.plannedEnd,
       draft.autoSwatchId,
       draft.createdAt
-    ));
+    )));
   }
 
   private openForm(taskId: string): void {
@@ -354,7 +356,7 @@ export struct DayGanttPage {
     if (base === null) {
       return;
     }
-    this.repo.upsert(taskAfterFormClose(base, this.formTitle, this.formStart, this.formEnd));
+    persistOrToast(this.repo.upsert(taskAfterFormClose(base, this.formTitle, this.formStart, this.formEnd)));
   }
 
   private async askDelete(taskId: string): Promise<void> {
@@ -370,7 +372,7 @@ export struct DayGanttPage {
       this.drawerOpen = false;
       this.formBase = null;
     }
-    await this.repo.delete(taskId);
+    await persistOrToast(this.repo.delete(taskId));
   }
 
   private deleteFromForm(): void {
@@ -380,7 +382,7 @@ export struct DayGanttPage {
     if (base === null) {
       return;
     }
-    this.repo.delete(base.id);
+    persistOrToast(this.repo.delete(base.id));
   }
 
   private rebuildBars(geo: GanttGeometry): void {
@@ -654,7 +656,7 @@ export struct DayGanttPage {
       this.dragKind = HIT_EMPTY;
       this.axisScrollable = ScrollDirection.Horizontal;
       if (wasDragging && pending !== null && event.type === TouchType.Up) {
-        this.repo.upsert(pending);
+        persistOrToast(this.repo.upsert(pending));
       } else if (wasDragging) {
         this.redraw();
       }

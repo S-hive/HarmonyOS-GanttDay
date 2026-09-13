@@ -16,6 +16,8 @@ import taskFormTest from './TaskForm.test';
 import weekPageTest from './WeekPage.test';
 import monthPageTest from './MonthPage.test';
 import appDatabaseTest from './AppDatabase.test';
+import saveFailureToastTest from './SaveFailureToast.test';
+import bootStateTest from './BootState.test';
 
 export default function testsuite() {
   smokeTest();
@@ -36,4 +38,6 @@ export default function testsuite() {
   weekPageTest();
   monthPageTest();
   appDatabaseTest();
+  saveFailureToastTest();
+  bootStateTest();
 }
