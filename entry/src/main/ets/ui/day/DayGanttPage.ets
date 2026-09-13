@@ -2,7 +2,8 @@ import { GanttGeometry } from '../../domain/gantt/GanttGeometry';
 import { DaySegmenter } from '../../domain/gantt/DaySegmenter';
 import { LaneLayout } from '../../domain/gantt/LaneLayout';
 import { kDayViewMaxSpanMinutes } from '../../domain/gantt/DayVisibleRange';
-import { proposeCreateAt, proposeMove, proposeResizeEnd, proposeResizeStart } from '../../domain/gantt/DayGestureMath';
+import { proposeCreate, proposeMove, proposeResizeEnd, proposeResizeStart } from '../../domain/gantt/DayGestureMath';
+import { CreateStroke, END_POPUP } from '../../domain/gesture/CreateStroke';
 import { TapClassifier, TapDecision, TapHit } from '../../domain/gesture/TapClassifier';
 import { FactorySwatches } from '../../domain/gantt/FactorySwatches';
 import { GanttSegment } from '../../domain/models/GanttSegment';
@@ -19,21 +20,25 @@ import { TaskForm, taskAfterFormClose } from '../task/TaskForm';
 import { AppColors } from '../theme/AppColors';
 import { CreateTaskPopup } from './CreateTaskPopup';
 import {
+  DAY_DRAG_START_SLOP,
   DEFAULT_EDGE_SLOP,
   HIT_EMPTY,
   HIT_MOVE,
   HIT_RESIZE_END,
   HIT_RESIZE_START,
   HitBar,
-  hitTest
+  canvasXFromTouch,
+  hitTest,
+  movementExceedsSlop
 } from './DayHitTest';
-
-const DRAG_START_SLOP: number = 16;
 
 const FIT_START_HOUR: number = 8;
 const FIT_END_HOUR: number = 22;
 const DAY_HOURS: number = 24;
-const HEADER_HEIGHT: number = 32;
+const HOUR_LABEL_FONT_PX: number = 30;
+const HOUR_LABEL_AXIS_GAP: number = 3;
+const HOUR_LABEL_TOP_PAD: number = 4;
+const HEADER_HEIGHT: number = HOUR_LABEL_TOP_PAD + HOUR_LABEL_FONT_PX + HOUR_LABEL_AXIS_GAP;
 const LANE_HEIGHT: number = 28;
 const BAR_HEIGHT: number = 20;
 const BAR_GAP: number = 4;
@@ -98,7 +103,12 @@ function addRoundRect(
 @Component
 export struct DayGanttPage {
   repo: TaskRepository = new MemoryTaskRepository();
-  @Prop date: Date = new Date();
+  @Prop @Watch('onParentDate') date: Date = new Date();
+  @State viewDate: Date = dateOnly(new Date());
+  onShift: (delta: number) => void = (_delta: number) => {
+  };
+  onGoToday: () => void = () => {
+  };
   @State canvasWidthVp: number = 1400;
   @State viewportWidthVp: number = 800;
   @State viewportHeightVp: number = 400;
@@ -143,8 +153,10 @@ export struct DayGanttPage {
   private prevTapMs: number = 0;
   private pendingHit: TapHit | null = null;
   private tapTimerId: number = -1;
+  private createStroke: CreateStroke = new CreateStroke();
 
   aboutToAppear(): void {
+    this.viewDate = dateOnly(this.date);
     this.sink.apply = (list: Task[]): void => {
       this.cachedTasks = list;
       this.redraw();
@@ -152,12 +164,10 @@ export struct DayGanttPage {
     this.bindWatch();
   }
 
-  aboutToUpdate(): void {
-    const day0: number = this.day0Of();
-    if (day0 !== this.boundDay0) {
-      this.bindWatch();
-      this.didFitScroll = false;
-      this.scrollToFit();
+  onParentDate(): void {
+    const incoming: number = WallClock.minutes(dateOnly(this.date));
+    if (incoming !== this.boundDay0) {
+      this.applyViewDate(dateOnly(this.date), false);
     }
   }
 
@@ -170,7 +180,35 @@ export struct DayGanttPage {
   }
 
   private day0Of(): number {
-    return WallClock.minutes(dateOnly(this.date));
+    return WallClock.minutes(dateOnly(this.viewDate));
+  }
+
+  private applyViewDate(next: Date, notifyParent: boolean): void {
+    const prevDay0: number = this.boundDay0;
+    this.viewDate = dateOnly(next);
+    const day0: number = this.day0Of();
+    if (day0 !== prevDay0) {
+      this.bindWatch();
+      this.didFitScroll = false;
+      this.scrollToFit();
+      this.redraw();
+    }
+    if (notifyParent) {
+      const deltaDays: number = Math.round((day0 - prevDay0) / WallClock.MINUTES_PER_DAY);
+      if (deltaDays !== 0) {
+        this.onShift(deltaDays);
+      }
+    }
+  }
+
+  private goByDays(delta: number): void {
+    const cur: Date = this.viewDate;
+    this.applyViewDate(new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + delta), true);
+  }
+
+  private goToday(): void {
+    this.applyViewDate(dateOnly(new Date()), true);
+    this.onGoToday();
   }
 
   private bindWatch(): void {
@@ -220,6 +258,37 @@ export struct DayGanttPage {
     return out;
   }
 
+  private touchCanvasX(point: TouchObject): number {
+    return canvasXFromTouch(point.x, this.scroller.currentOffset().xOffset, this.canvasWidthVp);
+  }
+
+  private releasePanIfIdle(): void {
+    if (this.tapTimerId !== -1 || this.dragging || this.dragArmed ||
+      this.createStroke.isDragging()) {
+      return;
+    }
+    this.axisScrollable = ScrollDirection.Horizontal;
+  }
+
+  private startCreateDrag(canvasX: number): void {
+    this.createStroke.begin(canvasX);
+    this.axisScrollable = ScrollDirection.None;
+    this.tapConsumed = true;
+    this.updateCreatePreview();
+  }
+
+  private updateCreatePreview(): void {
+    const span = proposeCreate(this.gestureGeo(), this.createStroke.x0(), this.createStroke.x1());
+    const id: string = this.createDraft !== null ? this.createDraft.id : util.generateRandomUUID();
+    const createdAt: number = this.createDraft !== null ?
+      this.createDraft.createdAt : WallClock.minutes(new Date());
+    this.createDraft = new Task(id, '', span.start, span.end, FactorySwatches.DEFAULT_ID, createdAt);
+    this.preview = null;
+    this.createStart = span.start;
+    this.createEnd = span.end;
+    this.redraw();
+  }
+
   private cancelPendingTap(): void {
     if (this.tapTimerId !== -1) {
       clearTimeout(this.tapTimerId);
@@ -237,11 +306,13 @@ export struct DayGanttPage {
     this.prevTapMs = 0;
     this.pendingHit = null;
     if (hit === null) {
+      this.releasePanIfIdle();
       return;
     }
     if (TapClassifier.onWaitTimeout(hit) === TapDecision.OpenForm && hit.taskId !== null) {
       this.openForm(hit.taskId);
     }
+    this.releasePanIfIdle();
   }
 
   private toTapHit(taskId: string | null, x: number, y: number): TapHit {
@@ -269,35 +340,24 @@ export struct DayGanttPage {
       return;
     }
     if (decision === TapDecision.Create) {
-      this.tapConsumed = true;
-      this.beginCreate(canvasX);
+      this.startCreateDrag(canvasX);
     }
   }
 
-  private beginCreate(canvasX: number): void {
-    const span = proposeCreateAt(this.gestureGeo(), canvasX);
-    const id: string = util.generateRandomUUID();
-    this.createDraft = new Task(
-      id,
-      '',
-      span.start,
-      span.end,
-      FactorySwatches.DEFAULT_ID,
-      WallClock.minutes(new Date())
-    );
-    this.preview = null;
-    this.createStart = span.start;
-    this.createEnd = span.end;
-    this.redraw();
-    let ax: number = this.drawGeo().xOf(span.start);
+  private openCreatePopup(): void {
+    const draft: Task | null = this.createDraft;
+    if (draft === null) {
+      return;
+    }
+    let ax: number = this.drawGeo().xOf(draft.plannedStart);
     let ay: number = HEADER_HEIGHT + BAR_GAP;
-    let aw: number = this.drawGeo().xOf(span.end) - ax;
+    let aw: number = this.drawGeo().xOf(draft.plannedEnd) - ax;
     let ah: number = BAR_HEIGHT;
     if (aw < 2) {
       aw = 2;
     }
     for (let i = 0; i < this.hitBars.length; i++) {
-      if (this.hitBars[i].taskId === id) {
+      if (this.hitBars[i].taskId === draft.id) {
         ax = this.hitBars[i].x;
         ay = this.hitBars[i].y;
         aw = this.hitBars[i].width;
@@ -305,6 +365,8 @@ export struct DayGanttPage {
         break;
       }
     }
+    this.createStart = draft.plannedStart;
+    this.createEnd = draft.plannedEnd;
     this.createAnchorX = ax - this.scroller.currentOffset().xOffset;
     this.createAnchorY = ay;
     this.createAnchorW = aw;
@@ -508,10 +570,10 @@ export struct DayGanttPage {
       ctx.lineTo(x, height);
       ctx.stroke();
       ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-      ctx.font = '11px sans-serif';
+      ctx.font = `${HOUR_LABEL_FONT_PX}px sans-serif`;
       ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(`${h}:00`, x + 4, 8);
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`${h}:00`, x + 4, HEADER_HEIGHT - HOUR_LABEL_AXIS_GAP);
     }
 
     if (hourPx > 40) {
@@ -564,7 +626,7 @@ export struct DayGanttPage {
   private paintNowLine(ctx: CanvasRenderingContext2D, geo: GanttGeometry): void {
     const now: number = WallClock.minutes(new Date());
     const day0: number = this.day0Of();
-    if (now < day0 || now > day0 + WallClock.MINUTES_PER_DAY) {
+    if (WallClock.dayStart(now) !== day0) {
       return;
     }
     const x: number = geo.xOf(now);
@@ -582,7 +644,7 @@ export struct DayGanttPage {
     if (point === undefined) {
       return;
     }
-    const x: number = point.x;
+    const x: number = this.touchCanvasX(point);
     const y: number = point.y;
 
     if (event.type === TouchType.Down) {
@@ -610,11 +672,18 @@ export struct DayGanttPage {
       return;
     }
 
+    if (event.type === TouchType.Move && this.createStroke.isDragging()) {
+      event.stopPropagation();
+      this.createStroke.move(x);
+      this.updateCreatePreview();
+      return;
+    }
+
     if (event.type === TouchType.Move && this.dragArmed && !this.dragging && !this.tapConsumed) {
       const dx: number = x - this.grabX;
       const dy: number = y - this.grabY;
       const wdx: number = point.windowX - this.startWindowX;
-      if (Math.hypot(dx, dy) > DRAG_START_SLOP || Math.abs(wdx) > DRAG_START_SLOP) {
+      if (movementExceedsSlop(dx, dy, wdx, DAY_DRAG_START_SLOP)) {
         this.cancelPendingTap();
         this.dragging = true;
         this.dragArmed = false;
@@ -651,6 +720,29 @@ export struct DayGanttPage {
       return;
     }
 
+    if ((event.type === TouchType.Up || event.type === TouchType.Cancel) && this.createStroke.isDragging()) {
+      event.stopPropagation();
+      this.dragArmed = false;
+      this.dragging = false;
+      this.tapConsumed = false;
+      if (event.type === TouchType.Up) {
+        const endKind = this.createStroke.finish();
+        if (endKind === END_POPUP) {
+          this.openCreatePopup();
+        } else {
+          this.createDraft = null;
+          this.redraw();
+          this.releasePanIfIdle();
+        }
+      } else {
+        this.createStroke.abort();
+        this.createDraft = null;
+        this.redraw();
+        this.releasePanIfIdle();
+      }
+      return;
+    }
+
     if ((event.type === TouchType.Up || event.type === TouchType.Cancel) &&
       (this.dragging || this.dragArmed)) {
       event.stopPropagation();
@@ -662,7 +754,7 @@ export struct DayGanttPage {
       this.preview = null;
       this.dragTask = null;
       this.dragKind = HIT_EMPTY;
-      this.axisScrollable = ScrollDirection.Horizontal;
+      this.releasePanIfIdle();
       if (wasDragging && pending !== null && event.type === TouchType.Up) {
         persistOrToast(this.repo.upsert(pending));
       } else if (wasDragging) {
@@ -671,65 +763,125 @@ export struct DayGanttPage {
     }
   }
 
-  build() {
-    Stack() {
-      Scroll(this.scroller) {
-        Canvas(this.ctx)
-          .width(this.canvasWidthVp)
-          .height(this.viewportHeightVp)
-          .onReady(() => {
-            this.canvasReady = true;
-            this.redraw();
-          })
-          .onTouch((event: TouchEvent) => {
-            this.onCanvasTouch(event);
-          })
-      }
-      .scrollable(this.axisScrollable)
-      .scrollBar(BarState.Off)
-      .width('100%')
-      .height('100%')
-      .onAreaChange((_old: Area, area: Area) => {
-        this.applyViewport(lengthVp(area.width), lengthVp(area.height));
-      })
-      if (this.createOpen) {
-        CreateTaskPopup({
-          anchorX: this.createAnchorX,
-          anchorY: this.createAnchorY,
-          anchorW: this.createAnchorW,
-          anchorH: this.createAnchorH,
-          start: this.createStart,
-          end: this.createEnd,
-          screenW: this.viewportWidthVp,
-          screenH: this.viewportHeightVp,
-          onConfirm: (title: string) => {
-            this.confirmCreate(title);
-          },
-          onCancel: () => {
-            this.cancelCreate();
-          }
+  private dayTitle(): string {
+    const y: number = this.viewDate.getFullYear();
+    const m: number = this.viewDate.getMonth() + 1;
+    const d: number = this.viewDate.getDate();
+    const ms: string = m < 10 ? `0${m}` : `${m}`;
+    const ds: string = d < 10 ? `0${d}` : `${d}`;
+    return `${y}-${ms}-${ds}`;
+  }
+
+  @Builder
+  dayTitleBar() {
+    Row() {
+      Text('GanttDay')
+        .fontSize(20)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#232429')
+        .flexShrink(0)
+      Text('<')
+        .fontSize(28)
+        .fontColor('#232429')
+        .flexShrink(0)
+        .padding({ left: 24, right: 8 })
+        .onClick(() => {
+          this.goByDays(-1);
         })
-      }
-      if (this.drawerOpen) {
-        SideDrawer({
-          screenWidth: this.viewportWidthVp,
-          onClose: () => {
-            this.closeDrawer();
-          }
-        }) {
-          TaskForm({
-            title: $formTitle,
-            plannedStart: $formStart,
-            plannedEnd: $formEnd,
-            onDelete: () => {
-              this.deleteFromForm();
+      Text(this.dayTitle())
+        .fontSize(16)
+        .fontColor('#232429')
+        .flexShrink(0)
+        .margin({ left: 4, right: 4 })
+      Text('>')
+        .fontSize(28)
+        .fontColor('#232429')
+        .flexShrink(0)
+        .padding({ left: 8, right: 8 })
+        .onClick(() => {
+          this.goByDays(1);
+        })
+      Text('今天')
+        .fontSize(16)
+        .fontColor(AppColors.AZURE)
+        .flexShrink(0)
+        .padding({ left: 12, right: 8 })
+        .onClick(() => {
+          this.goToday();
+        })
+    }
+    .width('100%')
+    .height(56)
+    .padding({ left: 16, right: 16 })
+    .justifyContent(FlexAlign.Start)
+    .alignItems(VerticalAlign.Center)
+    .backgroundColor(Color.White)
+  }
+
+  build() {
+    Column() {
+      this.dayTitleBar()
+      Stack() {
+        Scroll(this.scroller) {
+          Canvas(this.ctx)
+            .width(this.canvasWidthVp)
+            .height(this.viewportHeightVp)
+            .onReady(() => {
+              this.canvasReady = true;
+              this.redraw();
+            })
+            .onTouch((event: TouchEvent) => {
+              this.onCanvasTouch(event);
+            })
+        }
+        .scrollable(this.axisScrollable)
+        .scrollBar(BarState.Off)
+        .width('100%')
+        .height('100%')
+        .onAreaChange((_old: Area, area: Area) => {
+          this.applyViewport(lengthVp(area.width), lengthVp(area.height));
+        })
+        if (this.createOpen) {
+          CreateTaskPopup({
+            anchorX: this.createAnchorX,
+            anchorY: this.createAnchorY,
+            anchorW: this.createAnchorW,
+            anchorH: this.createAnchorH,
+            start: this.createStart,
+            end: this.createEnd,
+            screenW: this.viewportWidthVp,
+            screenH: this.viewportHeightVp,
+            onConfirm: (title: string) => {
+              this.confirmCreate(title);
+            },
+            onCancel: () => {
+              this.cancelCreate();
             }
           })
         }
+        if (this.drawerOpen) {
+          SideDrawer({
+            screenWidth: this.viewportWidthVp,
+            onClose: () => {
+              this.closeDrawer();
+            }
+          }) {
+            TaskForm({
+              title: $formTitle,
+              plannedStart: $formStart,
+              plannedEnd: $formEnd,
+              onDelete: () => {
+                this.deleteFromForm();
+              }
+            })
+          }
+        }
       }
+      .layoutWeight(1)
+      .width('100%')
+      .hitTestBehavior(HitTestMode.Block)
     }
     .width('100%')
     .height('100%')
-    .hitTestBehavior(HitTestMode.Block)
   }
 }
