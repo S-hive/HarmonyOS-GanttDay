@@ -18,6 +18,7 @@ import monthPageTest from './MonthPage.test';
 import appDatabaseTest from './AppDatabase.test';
 import saveFailureToastTest from './SaveFailureToast.test';
 import bootStateTest from './BootState.test';
+import createStrokeTest from './CreateStroke.test';
 
 export default function testsuite() {
   smokeTest();
@@ -40,4 +41,5 @@ export default function testsuite() {
   appDatabaseTest();
   saveFailureToastTest();
   bootStateTest();
+  createStrokeTest();
 }
