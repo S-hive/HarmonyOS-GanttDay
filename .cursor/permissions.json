@@ -1,0 +1,14 @@
+{
+  "terminalAllowlist": ["git", "hvigorw"],
+  "autoRun": {
+    "allow_instructions": [
+      "Allow read/write files inside this project folder",
+      "Allow git and hvigorw commands without approval",
+      "Auto apply file edits"
+    ],
+    "block_instructions": [
+      "Block commands that delete files outside project folder",
+      "Block destructive commands like rm -rf"
+    ]
+  }
+}
