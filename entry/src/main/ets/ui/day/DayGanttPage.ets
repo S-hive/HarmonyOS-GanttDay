@@ -1,7 +1,8 @@
 import { GanttGeometry } from '../../domain/gantt/GanttGeometry';
 import { DaySegmenter } from '../../domain/gantt/DaySegmenter';
 import { LaneLayout } from '../../domain/gantt/LaneLayout';
-import { kDayViewMaxSpanMinutes } from '../../domain/gantt/DayVisibleRange';
+import { CREATE_EDGE_REPEAT_MS, CreateEdgePush } from '../../domain/gantt/CreateEdgePush';
+import { computeDayFitMinutes, daySpansTouchingDay, kDayViewMaxSpanMinutes } from '../../domain/gantt/DayVisibleRange';
 import { proposeCreate, proposeMove, proposeResizeEnd, proposeResizeStart } from '../../domain/gantt/DayGestureMath';
 import { CreateStroke, END_POPUP } from '../../domain/gesture/CreateStroke';
 import { TapClassifier, TapDecision, TapHit } from '../../domain/gesture/TapClassifier';
@@ -32,9 +33,6 @@ import {
   movementExceedsSlop
 } from './DayHitTest';
 
-const FIT_START_HOUR: number = 8;
-const FIT_END_HOUR: number = 22;
-const DAY_HOURS: number = 24;
 const HOUR_LABEL_FONT_PX: number = 30;
 const HOUR_LABEL_AXIS_GAP: number = 3;
 const HOUR_LABEL_TOP_PAD: number = 4;
@@ -59,14 +57,6 @@ function argbToCss(argb: number): string {
   const g: number = (argb >> 8) & 0xFF;
   const b: number = argb & 0xFF;
   return `rgba(${r}, ${g}, ${b}, ${a})`;
-}
-
-function canvasWidthFor(viewportW: number): number {
-  const fitHours: number = FIT_END_HOUR - FIT_START_HOUR;
-  if (viewportW <= 0) {
-    return 1;
-  }
-  return viewportW * DAY_HOURS / fitHours;
 }
 
 function lengthVp(value: Length): number {
@@ -154,11 +144,20 @@ export struct DayGanttPage {
   private pendingHit: TapHit | null = null;
   private tapTimerId: number = -1;
   private createStroke: CreateStroke = new CreateStroke();
+  private fitStartMin: number = 8 * 60;
+  private fitEndMin: number = 22 * 60;
+  private createProbes: number[] = [];
+  private edgePush: CreateEdgePush = new CreateEdgePush();
+  private edgeRepeatId: number = -1;
+  private lastRawX: number = 0;
 
   aboutToAppear(): void {
     this.viewDate = dateOnly(this.date);
     this.sink.apply = (list: Task[]): void => {
       this.cachedTasks = list;
+      if (!this.createStroke.isDragging() && !this.createOpen) {
+        this.recomputeFit([]);
+      }
       this.redraw();
     };
     this.bindWatch();
@@ -173,6 +172,7 @@ export struct DayGanttPage {
 
   aboutToDisappear(): void {
     this.cancelPendingTap();
+    this.clearEdgeRepeat();
     this.unwatch();
     this.unwatch = (): void => {
     };
@@ -215,17 +215,94 @@ export struct DayGanttPage {
     this.unwatch();
     const day0: number = this.day0Of();
     this.boundDay0 = day0;
-    this.unwatch = this.repo.watchOverlapping(day0, day0 + WallClock.MINUTES_PER_DAY, this.sink);
+    this.unwatch = this.repo.watchOverlapping(day0, day0 + kDayViewMaxSpanMinutes, this.sink);
+  }
+
+  private activeGeo(): GanttGeometry {
+    const day0: number = this.day0Of();
+    return new GanttGeometry(day0 + this.fitStartMin, day0 + this.fitEndMin, this.viewportWidthVp);
   }
 
   private drawGeo(): GanttGeometry {
-    return new GanttGeometry(this.day0Of(), this.day0Of() + WallClock.MINUTES_PER_DAY, this.canvasWidthVp);
+    return this.activeGeo();
   }
 
   private gestureGeo(): GanttGeometry {
-    const span: number = kDayViewMaxSpanMinutes;
-    return new GanttGeometry(this.day0Of(), this.day0Of() + span,
-      this.canvasWidthVp * span / WallClock.MINUTES_PER_DAY);
+    return this.activeGeo();
+  }
+
+  private recomputeFit(probes: number[]): void {
+    const day0: number = this.day0Of();
+    const spans = daySpansTouchingDay(this.cachedTasks, day0);
+    const fit = computeDayFitMinutes(8, 22, day0, spans, probes);
+    this.fitStartMin = fit.start;
+    this.fitEndMin = fit.end;
+  }
+
+  private clearCreateAxis(): void {
+    this.createProbes = [];
+    this.edgePush.reset();
+    this.clearEdgeRepeat();
+    this.recomputeFit([]);
+    this.releasePanIfIdle();
+  }
+
+  private clearEdgeRepeat(): void {
+    if (this.edgeRepeatId !== -1) {
+      clearInterval(this.edgeRepeatId);
+      this.edgeRepeatId = -1;
+    }
+  }
+
+  private applyProbe(probe: number | null): void {
+    if (probe === null) {
+      return;
+    }
+    const next: number[] = [];
+    let minP: number = probe;
+    let maxP: number = probe;
+    for (let i = 0; i < this.createProbes.length; i++) {
+      const p: number = this.createProbes[i];
+      if (p < minP) {
+        minP = p;
+      }
+      if (p > maxP) {
+        maxP = p;
+      }
+      next.push(p);
+    }
+    next.push(probe);
+    this.createProbes = [minP, maxP];
+    this.recomputeFit(this.createProbes);
+  }
+
+  private syncEdgeRepeat(): void {
+    const want: boolean = this.edgePush.shouldHoldRepeat(this.lastRawX, this.viewportWidthVp);
+    if (!want) {
+      this.clearEdgeRepeat();
+      return;
+    }
+    if (this.edgeRepeatId !== -1) {
+      return;
+    }
+    this.edgeRepeatId = setInterval(() => {
+      if (!this.createStroke.isDragging()) {
+        this.clearEdgeRepeat();
+        return;
+      }
+      const geo = this.activeGeo();
+      const hourPx: number = this.viewportWidthVp / ((geo.viewEnd - geo.viewStart) / 60);
+      const probe = this.edgePush.holdTick(
+        this.lastRawX,
+        this.viewportWidthVp,
+        hourPx,
+        geo.viewStart,
+        geo.viewEnd,
+        this.day0Of()
+      );
+      this.applyProbe(probe);
+      this.updateCreatePreview();
+    }, CREATE_EDGE_REPEAT_MS);
   }
 
   private findTask(id: string): Task | null {
@@ -377,6 +454,8 @@ export struct DayGanttPage {
   private cancelCreate(): void {
     this.createOpen = false;
     this.createDraft = null;
+    this.clearCreateAxis();
+    this.releasePanIfIdle();
     this.redraw();
   }
 
@@ -385,6 +464,8 @@ export struct DayGanttPage {
     const draft: Task | null = this.createDraft;
     this.createOpen = false;
     this.createDraft = null;
+    this.clearCreateAxis();
+    this.releasePanIfIdle();
     if (draft === null || trimmed.length === 0) {
       this.redraw();
       return;
@@ -460,12 +541,17 @@ export struct DayGanttPage {
     const segs: GanttSegment[] = [];
     this.titles = new Map<string, string>();
     const shown: Task[] = this.tasksForDraw();
+    const fitEndAbs: number = day0 + this.fitEndMin;
     for (let i = 0; i < shown.length; i++) {
       const task: Task = shown[i];
       this.titles.set(task.id, task.title);
-      const clip: GanttSegment[] = DaySegmenter.segmentsForDay(task, day0);
-      for (let j = 0; j < clip.length; j++) {
-        segs.push(clip[j]);
+      let d: number = WallClock.dayStart(day0 + this.fitStartMin);
+      while (d < fitEndAbs) {
+        const clip: GanttSegment[] = DaySegmenter.segmentsForDay(task, d);
+        for (let j = 0; j < clip.length; j++) {
+          segs.push(clip[j]);
+        }
+        d += 1440;
       }
     }
     const lanes: Map<string, number> = LaneLayout.assign(segs);
@@ -498,7 +584,7 @@ export struct DayGanttPage {
     }
     this.didFitScroll = true;
     this.scroller.scrollTo({
-      xOffset: this.canvasWidthVp * FIT_START_HOUR / DAY_HOURS,
+      xOffset: 0,
       yOffset: 0,
       animation: false
     });
@@ -511,7 +597,7 @@ export struct DayGanttPage {
     const sizeChanged: boolean = width !== this.viewportWidthVp || height !== this.viewportHeightVp;
     this.viewportWidthVp = width;
     this.viewportHeightVp = height;
-    this.canvasWidthVp = canvasWidthFor(width);
+    this.canvasWidthVp = width;
     if (sizeChanged) {
       this.didFitScroll = false;
     }
@@ -559,11 +645,15 @@ export struct DayGanttPage {
       ctx.stroke();
     }
 
-    const hourPx: number = width / DAY_HOURS;
     const day0: number = this.day0Of();
-    for (let h = 0; h <= DAY_HOURS; h++) {
-      const x: number = geo.xOf(day0 + h * 60);
-      const emphasized: boolean = h % 6 === 0;
+    const startH: number = this.fitStartMin / 60;
+    const endH: number = this.fitEndMin / 60;
+    const hourPx: number = this.viewportWidthVp / (endH - startH);
+    for (let h = startH; h <= endH; h++) {
+      const t: number = day0 + h * 60;
+      const x: number = geo.xOf(t);
+      const labelH: number = ((h % 24) + 24) % 24;
+      const emphasized: boolean = labelH % 6 === 0;
       ctx.strokeStyle = emphasized ? 'rgba(0, 0, 0, 0.14)' : 'rgba(0, 0, 0, 0.07)';
       ctx.beginPath();
       ctx.moveTo(x, HEADER_HEIGHT);
@@ -573,12 +663,12 @@ export struct DayGanttPage {
       ctx.font = `${HOUR_LABEL_FONT_PX}px sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(`${h}:00`, x + 4, HEADER_HEIGHT - HOUR_LABEL_AXIS_GAP);
+      ctx.fillText(`${labelH}:00`, x + 4, HEADER_HEIGHT - HOUR_LABEL_AXIS_GAP);
     }
 
     if (hourPx > 40) {
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.04)';
-      for (let h = 0; h < DAY_HOURS; h++) {
+      for (let h = startH; h < endH; h++) {
         const base: number = geo.xOf(day0 + h * 60);
         for (let q = 1; q < 4; q++) {
           const x: number = base + hourPx * q / 4;
@@ -674,7 +764,18 @@ export struct DayGanttPage {
 
     if (event.type === TouchType.Move && this.createStroke.isDragging()) {
       event.stopPropagation();
+      this.lastRawX = point.x;
       this.createStroke.move(x);
+      const geo = this.activeGeo();
+      const probe = this.edgePush.applyPointer(
+        point.x,
+        this.viewportWidthVp,
+        geo.viewStart,
+        geo.viewEnd,
+        this.day0Of()
+      );
+      this.applyProbe(probe);
+      this.syncEdgeRepeat();
       this.updateCreatePreview();
       return;
     }
@@ -731,12 +832,14 @@ export struct DayGanttPage {
           this.openCreatePopup();
         } else {
           this.createDraft = null;
+          this.clearCreateAxis();
           this.redraw();
           this.releasePanIfIdle();
         }
       } else {
         this.createStroke.abort();
         this.createDraft = null;
+        this.clearCreateAxis();
         this.redraw();
         this.releasePanIfIdle();
       }
