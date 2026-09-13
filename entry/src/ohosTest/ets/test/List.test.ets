@@ -19,6 +19,7 @@ import appDatabaseTest from './AppDatabase.test';
 import saveFailureToastTest from './SaveFailureToast.test';
 import bootStateTest from './BootState.test';
 import createStrokeTest from './CreateStroke.test';
+import dayVisibleRangeTest from './DayVisibleRange.test';
 
 export default function testsuite() {
   smokeTest();
@@ -42,4 +43,5 @@ export default function testsuite() {
   saveFailureToastTest();
   bootStateTest();
   createStrokeTest();
+  dayVisibleRangeTest();
 }

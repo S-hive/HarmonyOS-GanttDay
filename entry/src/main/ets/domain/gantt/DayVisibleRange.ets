@@ -1,3 +1,5 @@
+import { Task } from '../models/Task';
+import { DaySegmenter } from './DaySegmenter';
 import { WallClock } from '../time/WallClock';
 
 export const kDayViewMaxSpanMinutes: number = 7 * WallClock.MINUTES_PER_DAY;
@@ -84,4 +86,20 @@ export function computeDayFitMinutes(
   }
 
   return new FitMinutes(start, end);
+}
+
+export function daySpansTouchingDay(tasks: Task[], day0: number): FitMinutes[] {
+  const out: FitMinutes[] = [];
+  const day1: number = day0 + WallClock.MINUTES_PER_DAY;
+  for (let i = 0; i < tasks.length; i++) {
+    const task: Task = tasks[i];
+    if (task.plannedEnd <= day0 || task.plannedStart >= day1) {
+      continue;
+    }
+    const segs = DaySegmenter.segmentsForDay(task, day0);
+    for (let j = 0; j < segs.length; j++) {
+      out.push(new FitMinutes(segs[j].start, segs[j].end));
+    }
+  }
+  return out;
 }
