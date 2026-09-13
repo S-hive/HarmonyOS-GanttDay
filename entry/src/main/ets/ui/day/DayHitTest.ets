@@ -4,6 +4,19 @@ export const HIT_RESIZE_END: string = 'resizeEnd';
 export const HIT_EMPTY: string = 'empty';
 
 export const DEFAULT_EDGE_SLOP: number = 8;
+export const DAY_DRAG_START_SLOP: number = 32;
+
+export function canvasXFromTouch(touchX: number, scrollX: number, canvasWidth: number): number {
+  const shifted: number = touchX + scrollX;
+  if (scrollX > 0 && touchX + 0.5 < scrollX && shifted <= canvasWidth) {
+    return shifted;
+  }
+  return touchX;
+}
+
+export function movementExceedsSlop(dx: number, dy: number, windowDx: number, slop: number): boolean {
+  return Math.hypot(dx, dy) > slop || Math.abs(windowDx) > slop;
+}
 
 export class HitBar {
   taskId: string;

@@ -183,7 +183,14 @@ export struct DayGanttPage {
     return WallClock.minutes(dateOnly(this.viewDate));
   }
 
+  private isCreateBlockingDayChange(): boolean {
+    return this.createStroke.isDragging() || this.createOpen;
+  }
+
   private applyViewDate(next: Date, notifyParent: boolean): void {
+    if (this.isCreateBlockingDayChange()) {
+      return;
+    }
     const prevDay0: number = this.boundDay0;
     this.viewDate = dateOnly(next);
     const day0: number = this.day0Of();
@@ -202,11 +209,17 @@ export struct DayGanttPage {
   }
 
   private goByDays(delta: number): void {
+    if (this.isCreateBlockingDayChange()) {
+      return;
+    }
     const cur: Date = this.viewDate;
     this.applyViewDate(new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + delta), true);
   }
 
   private goToday(): void {
+    if (this.isCreateBlockingDayChange()) {
+      return;
+    }
     this.applyViewDate(dateOnly(new Date()), true);
     this.onGoToday();
   }
@@ -357,9 +370,7 @@ export struct DayGanttPage {
   private updateCreatePreview(): void {
     const span = proposeCreate(this.gestureGeo(), this.createStroke.x0(), this.createStroke.x1());
     const id: string = this.createDraft !== null ? this.createDraft.id : util.generateRandomUUID();
-    const createdAt: number = this.createDraft !== null ?
-      this.createDraft.createdAt : WallClock.minutes(new Date());
-    this.createDraft = new Task(id, '', span.start, span.end, FactorySwatches.DEFAULT_ID, createdAt);
+    this.createDraft = new Task(id, '', span.start, span.end, FactorySwatches.DEFAULT_ID, 0);
     this.preview = null;
     this.createStart = span.start;
     this.createEnd = span.end;
@@ -464,20 +475,38 @@ export struct DayGanttPage {
     const draft: Task | null = this.createDraft;
     this.createOpen = false;
     this.createDraft = null;
-    this.clearCreateAxis();
-    this.releasePanIfIdle();
     if (draft === null || trimmed.length === 0) {
+      this.clearCreateAxis();
+      this.releasePanIfIdle();
       this.redraw();
       return;
     }
-    persistOrToast(this.repo.upsert(new Task(
+    const saved: Task = new Task(
       draft.id,
       trimmed,
       draft.plannedStart,
       draft.plannedEnd,
       draft.autoSwatchId,
-      draft.createdAt
-    )));
+      WallClock.minutes(new Date())
+    );
+    persistOrToast(this.repo.upsert(saved));
+    const next: Task[] = [];
+    let found: boolean = false;
+    for (let i = 0; i < this.cachedTasks.length; i++) {
+      if (this.cachedTasks[i].id === saved.id) {
+        next.push(saved);
+        found = true;
+      } else {
+        next.push(this.cachedTasks[i]);
+      }
+    }
+    if (!found) {
+      next.push(saved);
+    }
+    this.cachedTasks = next;
+    this.clearCreateAxis();
+    this.releasePanIfIdle();
+    this.redraw();
   }
 
   private openForm(taskId: string): void {
@@ -889,6 +918,9 @@ export struct DayGanttPage {
         .flexShrink(0)
         .padding({ left: 24, right: 8 })
         .onClick(() => {
+          if (this.isCreateBlockingDayChange()) {
+            return;
+          }
           this.goByDays(-1);
         })
       Text(this.dayTitle())
@@ -902,6 +934,9 @@ export struct DayGanttPage {
         .flexShrink(0)
         .padding({ left: 8, right: 8 })
         .onClick(() => {
+          if (this.isCreateBlockingDayChange()) {
+            return;
+          }
           this.goByDays(1);
         })
       Text('今天')
@@ -910,6 +945,9 @@ export struct DayGanttPage {
         .flexShrink(0)
         .padding({ left: 12, right: 8 })
         .onClick(() => {
+          if (this.isCreateBlockingDayChange()) {
+            return;
+          }
           this.goToday();
         })
     }
