@@ -4,6 +4,7 @@ import { RdbTaskRepository } from '../data/RdbTaskRepository';
 import { TaskRepository } from '../platform/TaskRepository';
 import { BOOT_ERROR, BOOT_LOADING, BOOT_READY, BootView, bootViewAfterOpen } from '../ui/common/BootState';
 import { DbErrorScreen } from '../ui/common/DbErrorScreen';
+import { consumeDrawerSystemBack } from '../ui/common/SideDrawer';
 import { AppShell } from '../ui/shell/AppShell';
 
 @Entry
@@ -15,6 +16,10 @@ struct Index {
 
   aboutToAppear(): void {
     this.openDatabase();
+  }
+
+  onBackPress(): boolean {
+    return consumeDrawerSystemBack();
   }
 
   private applyBoot(ok: boolean, path: string): void {

@@ -2,7 +2,7 @@ import { AppColors } from '../theme/AppColors';
 
 @Component
 export struct ViewNavBar {
-  selectedIndex: number = 0;
+  @Prop selectedIndex: number = 0;
   onSelect: (index: number) => void = (_index: number) => {
   };
 

@@ -349,6 +349,14 @@ export struct DayGanttPage {
     this.drawerOpen = true;
   }
 
+  onBackPress(): boolean {
+    if (!this.drawerOpen) {
+      return false;
+    }
+    this.closeDrawer();
+    return true;
+  }
+
   private closeDrawer(): void {
     const base: Task | null = this.formBase;
     this.drawerOpen = false;
