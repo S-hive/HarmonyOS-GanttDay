@@ -38,22 +38,25 @@ export class AppDatabase {
     try {
       store = await relationalStore.getRdbStore(context, config);
     } catch (firstErr) {
-      await AppDatabase.renameCorrupt(context);
-      try {
-        store = await relationalStore.getRdbStore(context, config);
-      } catch (secondErr) {
-        return Promise.reject(new DatabaseOpenError(
-          AppDatabase.errorMessage(secondErr as BusinessError),
-          AppDatabase.databasePath(context)
-        ));
+      const backupOrDbPath: string = await AppDatabase.renameCorrupt(context);
+      return Promise.reject(new DatabaseOpenError(
+        AppDatabase.errorMessage(firstErr as BusinessError),
+        backupOrDbPath
+      ));
+    }
+    try {
+      await AppDatabase.applySchema(store);
+      await AppDatabase.seed(store);
+      if (store.version < AppDatabase.SCHEMA_VERSION) {
+        store.version = AppDatabase.SCHEMA_VERSION;
       }
+      return store;
+    } catch (schemaErr) {
+      return Promise.reject(new DatabaseOpenError(
+        AppDatabase.errorMessage(schemaErr as BusinessError),
+        AppDatabase.databasePath(context)
+      ));
     }
-    await AppDatabase.applySchema(store);
-    await AppDatabase.seed(store);
-    if (store.version < AppDatabase.SCHEMA_VERSION) {
-      store.version = AppDatabase.SCHEMA_VERSION;
-    }
-    return store;
   }
 
   static async applySchema(store: relationalStore.RdbStore): Promise<void> {
@@ -147,10 +150,10 @@ export class AppDatabase {
     await store.insert('setting', row, relationalStore.ConflictResolution.ON_CONFLICT_IGNORE);
   }
 
-  static async renameCorrupt(context: Context): Promise<void> {
+  static async renameCorrupt(context: Context): Promise<string> {
     const path: string = AppDatabase.resolveExistingDbPath(context);
     if (path.length === 0) {
-      return;
+      return AppDatabase.databasePath(context);
     }
     const dest: string = `${AppDatabase.parentDir(path)}/${AppDatabase.CORRUPT_PREFIX}${AppDatabase.timeStamp()}`;
     try {
@@ -163,6 +166,7 @@ export class AppDatabase {
     }
     AppDatabase.removeSidecar(`${path}-wal`);
     AppDatabase.removeSidecar(`${path}-shm`);
+    return dest;
   }
 
   static resolveExistingDbPath(context: Context): string {

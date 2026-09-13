@@ -26,13 +26,13 @@ struct Index {
   private async openDatabase(): Promise<void> {
     this.phase = BOOT_LOADING;
     this.errorPath = '';
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     try {
-      const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       const store = await AppDatabase.openOrRepair(ctx);
       this.repo = new RdbTaskRepository(store);
       this.applyBoot(true, '');
     } catch (e) {
-      let path: string = '';
+      let path: string = AppDatabase.databasePath(ctx);
       if (e instanceof DatabaseOpenError) {
         path = e.path;
       }

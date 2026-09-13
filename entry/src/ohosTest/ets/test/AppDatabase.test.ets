@@ -3,7 +3,7 @@ import { Context } from '@kit.AbilityKit';
 import { abilityDelegatorRegistry } from '@kit.TestKit';
 import { relationalStore, ValuesBucket } from '@kit.ArkData';
 import { fileIo } from '@kit.CoreFileKit';
-import { AppDatabase } from '../../../main/ets/data/AppDatabase';
+import { AppDatabase, DatabaseOpenError } from '../../../main/ets/data/AppDatabase';
 import { RdbTaskRepository } from '../../../main/ets/data/RdbTaskRepository';
 import { TaskListener } from '../../../main/ets/platform/TaskRepository';
 import { Task } from '../../../main/ets/domain/models/Task';
@@ -36,6 +36,15 @@ function snapshot(repo: RdbTaskRepository, rangeStart: number, rangeEnd: number)
   const listener: CollectingListener = new CollectingListener();
   repo.watchOverlapping(rangeStart, rangeEnd, listener);
   return listener.items;
+}
+
+function findById(tasks: Task[], id: string): Task | null {
+  for (let i = 0; i < tasks.length; i++) {
+    if (tasks[i].id === id) {
+      return tasks[i];
+    }
+  }
+  return null;
 }
 
 function writeGarbage(path: string): void {
@@ -89,6 +98,7 @@ export default function appDatabaseTest() {
       expect(rs.getLong(rs.getColumnIndex('planned_start'))).assertEqual(start);
       expect(rs.getLong(rs.getColumnIndex('planned_end'))).assertEqual(end);
       rs.close();
+      await store.executeSql('DELETE FROM task WHERE id = ?', ['roundtrip']);
       await store.close();
     });
 
@@ -101,12 +111,20 @@ export default function appDatabaseTest() {
       const end8: number = WallClock.minutes(new Date(2026, 7, 9));
       const start9: number = WallClock.minutes(new Date(2026, 7, 9));
       const end9: number = WallClock.minutes(new Date(2026, 7, 10));
+      const start10: number = WallClock.minutes(new Date(2026, 7, 10));
+      const end10: number = WallClock.minutes(new Date(2026, 7, 11));
       const on8: Task[] = snapshot(repo, start8, end8);
       const on9: Task[] = snapshot(repo, start9, end9);
-      expect(on8.length).assertEqual(1);
-      expect(on8[0].id).assertEqual('night');
-      expect(on9.length).assertEqual(1);
-      expect(on9[0].id).assertEqual('night');
+      const on10: Task[] = snapshot(repo, start10, end10);
+      const night8: Task | null = findById(on8, 'night');
+      const night9: Task | null = findById(on9, 'night');
+      const night10: Task | null = findById(on10, 'night');
+      expect(night8 !== null).assertTrue();
+      expect(night8!.id).assertEqual('night');
+      expect(night9 !== null).assertTrue();
+      expect(night9!.id).assertEqual('night');
+      expect(night10).assertNull();
+      await repo.delete('night');
       await store.close();
     });
 
@@ -117,9 +135,21 @@ export default function appDatabaseTest() {
       const dbPath: string = AppDatabase.databasePath(context);
       writeGarbage(dbPath);
       const before: number = listCorruptNames(AppDatabase.rdbDirectory(context)).length;
-      const repaired: relationalStore.RdbStore = await AppDatabase.openOrRepair(context);
+      let rejected: boolean = false;
+      let backupPath: string = '';
+      try {
+        await AppDatabase.openOrRepair(context);
+      } catch (e) {
+        rejected = true;
+        if (e instanceof DatabaseOpenError) {
+          backupPath = e.path;
+        }
+      }
+      expect(rejected).assertTrue();
       const afterNames: string[] = listCorruptNames(AppDatabase.rdbDirectory(context));
       expect(afterNames.length > before).assertTrue();
+      expect(backupPath.indexOf(AppDatabase.CORRUPT_PREFIX) >= 0).assertTrue();
+      const repaired: relationalStore.RdbStore = await AppDatabase.openOrRepair(context);
       const start: number = WallClock.minutes(new Date(2026, 7, 8, 11, 0));
       const end: number = WallClock.minutes(new Date(2026, 7, 8, 12, 0));
       const row: ValuesBucket = {
