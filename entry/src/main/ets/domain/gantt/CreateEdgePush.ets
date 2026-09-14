@@ -1,7 +1,7 @@
 import { expandProbeFromOverscroll } from './DayGestureMath';
 import { kDayViewMaxSpanMinutes } from './DayVisibleRange';
 
-export const CREATE_EDGE_ZONE_VP: number = 56;
+export const CREATE_EDGE_ZONE_VP: number = 168;
 export const CREATE_EDGE_HOLD_FRAC: number = 0.35;
 export const CREATE_EDGE_REPEAT_MS: number = 180;
 

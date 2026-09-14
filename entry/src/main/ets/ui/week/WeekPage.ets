@@ -13,8 +13,6 @@ import {
   barDetailPopupOrigin,
   formatBarHoverMeta
 } from '../common/BarDetailPopup';
-import { DeleteConfirm } from '../common/DeleteConfirm';
-import { persistOrToast } from '../common/SaveFailureToast';
 import { AppColors } from '../theme/AppColors';
 
 export const WEEK_HOUR_HEIGHT: number = 48;
@@ -396,10 +394,6 @@ export struct WeekPage {
       return;
     }
     this.cancelPendingTap();
-    if (decision === TapDecision.Delete && curr.taskId !== null) {
-      this.dismissDetail();
-      this.askDelete(curr.taskId);
-    }
   }
 
   private currentScrollY(): number {
@@ -453,19 +447,6 @@ export struct WeekPage {
     }
     this.dismissDetail();
     return true;
-  }
-
-  private async askDelete(taskId: string): Promise<void> {
-    const task: Task | null = this.findTask(taskId);
-    if (task === null) {
-      return;
-    }
-    const ok: boolean = await DeleteConfirm.show(task.title);
-    if (!ok) {
-      return;
-    }
-    this.dismissDetail();
-    await persistOrToast(this.repo.delete(taskId));
   }
 
   private rebuildRects(): void {
@@ -555,11 +536,6 @@ export struct WeekPage {
       ctx.lineTo(width, y);
       ctx.stroke();
     }
-    ctx.fillStyle = argbToCss(WEEK_DAY_BOUNDARY_COLOR);
-    for (let d = 1; d < 7; d++) {
-      const x: number = weekDayLeft(d, dayWidth) - WEEK_DAY_BOUNDARY_STRIDE + WEEK_DAY_BOUNDARY_GAP;
-      ctx.fillRect(x, 0, WEEK_DAY_BOUNDARY_WIDTH, bodyH);
-    }
   }
 
   private paintBlocks(ctx: CanvasRenderingContext2D): void {
@@ -636,6 +612,13 @@ export struct WeekPage {
   }
 
   @Builder
+  boundarySpacer() {
+    Column()
+      .width(WEEK_DAY_BOUNDARY_STRIDE)
+      .height('100%')
+  }
+
+  @Builder
   boundaryMark() {
     Row() {
       Column()
@@ -649,6 +632,37 @@ export struct WeekPage {
     }
     .width(WEEK_DAY_BOUNDARY_STRIDE)
     .height('100%')
+  }
+
+  @Builder
+  boundaryOverlay() {
+    Row() {
+      Column()
+        .width(WEEK_GUTTER_WIDTH)
+      Blank()
+        .layoutWeight(1)
+      this.boundaryMark()
+      Blank()
+        .layoutWeight(1)
+      this.boundaryMark()
+      Blank()
+        .layoutWeight(1)
+      this.boundaryMark()
+      Blank()
+        .layoutWeight(1)
+      this.boundaryMark()
+      Blank()
+        .layoutWeight(1)
+      this.boundaryMark()
+      Blank()
+        .layoutWeight(1)
+      this.boundaryMark()
+      Blank()
+        .layoutWeight(1)
+    }
+    .width('100%')
+    .height('100%')
+    .hitTestBehavior(HitTestMode.None)
   }
 
   @Builder
@@ -677,17 +691,17 @@ export struct WeekPage {
             .width(WEEK_GUTTER_WIDTH)
             .height(WEEK_HEADER_HEIGHT)
           this.headerDay(0)
-          this.boundaryMark()
+          this.boundarySpacer()
           this.headerDay(1)
-          this.boundaryMark()
+          this.boundarySpacer()
           this.headerDay(2)
-          this.boundaryMark()
+          this.boundarySpacer()
           this.headerDay(3)
-          this.boundaryMark()
+          this.boundarySpacer()
           this.headerDay(4)
-          this.boundaryMark()
+          this.boundarySpacer()
           this.headerDay(5)
-          this.boundaryMark()
+          this.boundarySpacer()
           this.headerDay(6)
         }
         .width('100%')
@@ -755,6 +769,8 @@ export struct WeekPage {
       .onAreaChange((_old: Area, area: Area) => {
         this.applyViewport(lengthVp(area.width), lengthVp(area.height));
       })
+
+      this.boundaryOverlay()
 
       if (this.detailOpen) {
         BarDetailPopup({

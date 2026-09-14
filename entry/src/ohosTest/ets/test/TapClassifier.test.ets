@@ -16,9 +16,9 @@ export default function tapClassifierTest() {
       expect(d).assertEqual(TapDecision.Wait);
     });
 
-    it('second_bar_tap_same_task_deletes', 0, () => {
+    it('second_bar_tap_same_task_waits', 0, () => {
       const d = TapClassifier.onDown(hit(10, 10, 'a'), 1000, hit(12, 11, 'a'), 1200);
-      expect(d).assertEqual(TapDecision.Delete);
+      expect(d).assertEqual(TapDecision.Wait);
     });
 
     it('second_bar_tap_other_task_waits', 0, () => {
@@ -31,9 +31,9 @@ export default function tapClassifierTest() {
       expect(d).assertEqual(TapDecision.Create);
     });
 
-    it('empty_second_tap_within_500ms_still_creates', 0, () => {
-      expect(TapClassifier.DOUBLE_MS).assertEqual(500);
-      const d = TapClassifier.onDown(hit(40, 40, null), 1000, hit(42, 41, null), 1450);
+    it('empty_second_tap_within_double_window_still_creates', 0, () => {
+      expect(TapClassifier.DOUBLE_MS).assertEqual(250);
+      const d = TapClassifier.onDown(hit(40, 40, null), 1000, hit(42, 41, null), 1240);
       expect(d).assertEqual(TapDecision.Create);
     });
 
@@ -45,9 +45,26 @@ export default function tapClassifierTest() {
       expect(TapClassifier.onWaitTimeout(hit(40, 40, null))).assertEqual(TapDecision.Ignore);
     });
 
-    it('same_task_far_apart_still_deletes', 0, () => {
+    it('bar_release_opens_delete_veil_when_it_was_a_tap', 0, () => {
+      expect(TapClassifier.shouldOpenDeleteVeilOnRelease('a', false, false, false)).assertTrue();
+    });
+
+    it('long_press_does_not_open_delete_veil', 0, () => {
+      expect(TapClassifier.shouldOpenDeleteVeilOnRelease('a', false, false, true)).assertFalse();
+    });
+
+    it('actual_edit_does_not_open_delete_veil', 0, () => {
+      expect(TapClassifier.shouldOpenDeleteVeilOnRelease('a', false, true, false)).assertFalse();
+    });
+
+    it('wait_timeout_while_press_held_does_not_open_veil', 0, () => {
+      expect(TapClassifier.shouldOpenDeleteVeilOnWaitTimeout(true, true, false)).assertFalse();
+      expect(TapClassifier.shouldOpenDeleteVeilOnWaitTimeout(false, false, false)).assertTrue();
+    });
+
+    it('same_task_far_apart_still_waits', 0, () => {
       const d = TapClassifier.onDown(hit(5, 5, 'night'), 1000, hit(200, 5, 'night'), 1180);
-      expect(d).assertEqual(TapDecision.Delete);
+      expect(d).assertEqual(TapDecision.Wait);
     });
 
     it('empty_taps_far_apart_ignore', 0, () => {

@@ -30,4 +30,22 @@ export class DaySegmenter {
     }
     return [new GanttSegment(taskId, clippedStart, clippedEnd)];
   }
+
+  static mergeAbutting(segs: GanttSegment[]): GanttSegment[] {
+    const out: GanttSegment[] = [];
+    for (let i = 0; i < segs.length; i++) {
+      const s: GanttSegment = segs[i];
+      if (out.length === 0) {
+        out.push(s);
+        continue;
+      }
+      const last: GanttSegment = out[out.length - 1];
+      if (last.taskId === s.taskId && last.end === s.start) {
+        out[out.length - 1] = new GanttSegment(s.taskId, last.start, s.end);
+      } else {
+        out.push(s);
+      }
+    }
+    return out;
+  }
 }

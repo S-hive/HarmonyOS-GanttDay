@@ -4,7 +4,7 @@ export class FactorySwatches {
   static readonly DEFAULT_ID: string = 'azure';
 
   static readonly ALL: ColorSwatch[] = [
-    new ColorSwatch('azure', '霁蓝', 0xFF457BD9, 218, 0.661, 0.561, 0, true, false),
+    new ColorSwatch('azure', '霁蓝', 0xFF6198F6, 218, 0.893, 0.673, 0, true, false),
     new ColorSwatch('peach', '桃', 0xFFFFDAC1, 24, 1.0, 0.878, 1, false, false),
     new ColorSwatch('leaf', '芽绿', 0xFFE2F0CB, 83, 0.551, 0.869, 2, false, false),
     new ColorSwatch('mint', '薄荷', 0xFFB5EAD7, 158, 0.559, 0.814, 3, false, false),

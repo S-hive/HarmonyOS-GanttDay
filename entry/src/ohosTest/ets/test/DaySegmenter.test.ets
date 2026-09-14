@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { DaySegmenter } from '../../../main/ets/domain/gantt/DaySegmenter';
+import { GanttSegment } from '../../../main/ets/domain/models/GanttSegment';
 import { Task } from '../../../main/ets/domain/models/Task';
 import { WallClock } from '../../../main/ets/domain/time/WallClock';
 
@@ -60,6 +61,20 @@ export default function daySegmenterTest() {
       expect(segs.length).assertEqual(1);
       expect(segs[0].start).assertEqual(start);
       expect(segs[0].end).assertEqual(end);
+    });
+
+    it('mergeAbutting_joins_midnight_split_into_one_bar', 0, () => {
+      const midnight = WallClock.minutes(new Date(2026, 7, 9));
+      const start = WallClock.minutes(new Date(2026, 7, 8, 18, 30));
+      const end = WallClock.minutes(new Date(2026, 7, 9, 12, 45));
+      const split = [
+        new GanttSegment('a', start, midnight),
+        new GanttSegment('a', midnight, end)
+      ];
+      const merged = DaySegmenter.mergeAbutting(split);
+      expect(merged.length).assertEqual(1);
+      expect(merged[0].start).assertEqual(start);
+      expect(merged[0].end).assertEqual(end);
     });
   });
 }

@@ -7,25 +7,20 @@ export class TapHit {
 export enum TapDecision {
   Wait = 0,
   OpenForm = 1,
-  Delete = 2,
-  Create = 3,
-  Ignore = 4
+  Create = 2,
+  Ignore = 3
 }
 
 export class TapClassifier {
   static readonly HIT_SLOP_VP: number = 32;
-  static readonly DOUBLE_MS: number = 500;
+  static readonly DOUBLE_MS: number = 250;
 
   static onDown(prev: TapHit | null, prevMs: number, curr: TapHit, nowMs: number): TapDecision {
     if (prev === null || nowMs - prevMs > TapClassifier.DOUBLE_MS) {
       return TapDecision.Wait;
     }
 
-    if (prev.taskId !== null && prev.taskId === curr.taskId) {
-      return TapDecision.Delete;
-    }
-
-    if (prev.taskId !== null && curr.taskId !== null && prev.taskId !== curr.taskId) {
+    if (prev.taskId !== null && curr.taskId !== null) {
       return TapDecision.Wait;
     }
 
@@ -45,5 +40,22 @@ export class TapClassifier {
       return TapDecision.OpenForm;
     }
     return TapDecision.Ignore;
+  }
+
+  static shouldOpenDeleteVeilOnRelease(
+    taskId: string | null,
+    wasDragging: boolean,
+    actualEditActive: boolean,
+    longPressFired: boolean
+  ): boolean {
+    return taskId !== null && !wasDragging && !actualEditActive && !longPressFired;
+  }
+
+  static shouldOpenDeleteVeilOnWaitTimeout(
+    pointerDown: boolean,
+    longPressPending: boolean,
+    actualEditActive: boolean
+  ): boolean {
+    return !pointerDown && !longPressPending && !actualEditActive;
   }
 }

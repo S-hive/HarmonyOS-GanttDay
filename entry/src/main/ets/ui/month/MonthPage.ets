@@ -327,7 +327,7 @@ export struct MonthPage {
 
   private cellBackground(day: Date): number {
     if (isMonthGridDay(day, this.monthAnchor()) && sameCalendarDay(day, new Date())) {
-      return 0x0F457BD9;
+      return 0x0F6198F6;
     }
     return AppColors.BAR_BACKGROUND;
   }

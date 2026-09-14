@@ -84,6 +84,10 @@ export function proposeCreate(geo: GanttGeometry, x0: number, x1: number): Span 
   return clampSpanToView(geo, start, end);
 }
 
+export function remapCreateX(oldGeo: GanttGeometry, newGeo: GanttGeometry, x: number): number {
+  return clampXToView(newGeo, newGeo.xOf(oldGeo.timeOf(x)));
+}
+
 export function expandProbeFromOverscroll(
   day0: number,
   maxEnd: number,

@@ -118,7 +118,7 @@ export struct CreateTaskPopup {
         .id('createTaskTitle')
         .type(InputType.Normal)
         .placeholderColor('#8FB4E8')
-        .caretColor('#457BD9')
+        .caretColor('#6198F6')
         .fontColor('#232429')
         .backgroundColor(Color.Transparent)
         .padding({ left: 0, right: 0, top: 8, bottom: 8 })
@@ -133,7 +133,7 @@ export struct CreateTaskPopup {
           this.confirm();
         })
       Divider()
-        .color('#457BD9')
+        .color('#6198F6')
         .strokeWidth(1)
       Row() {
         Button('取消', { type: ButtonType.Normal })
@@ -150,7 +150,7 @@ export struct CreateTaskPopup {
           .fontSize(14)
           .fontColor(Color.White)
           .height(40)
-          .backgroundColor('#457BD9')
+          .backgroundColor('#6198F6')
           .borderRadius(CREATE_POPUP_RADIUS)
           .margin({ left: 8 })
           .layoutWeight(1)

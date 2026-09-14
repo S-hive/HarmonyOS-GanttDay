@@ -5,6 +5,7 @@ import { TaskRepository } from '../platform/TaskRepository';
 import { BOOT_ERROR, BOOT_LOADING, BOOT_READY, BootView, bootViewAfterOpen } from '../ui/common/BootState';
 import { DbErrorScreen } from '../ui/common/DbErrorScreen';
 import { consumeActualEditBack } from '../domain/gantt/ActualEdit';
+import { consumeDeleteVeilBack } from '../ui/common/DeleteVeilOverlay';
 import { consumeDrawerSystemBack } from '../ui/common/SideDrawer';
 import { AppShell } from '../ui/shell/AppShell';
 
@@ -20,6 +21,9 @@ struct Index {
   }
 
   onBackPress(): boolean {
+    if (consumeDeleteVeilBack()) {
+      return true;
+    }
     if (consumeDrawerSystemBack()) {
       return true;
     }

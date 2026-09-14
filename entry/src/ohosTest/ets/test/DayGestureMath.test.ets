@@ -6,6 +6,7 @@ import {
   proposeCreateAt,
   proposeMove,
   proposeResizeEnd,
+  remapCreateX,
   Span
 } from '../../../main/ets/domain/gantt/DayGestureMath';
 import { kDayViewMaxSpanMinutes } from '../../../main/ets/domain/gantt/DayVisibleRange';
@@ -123,6 +124,17 @@ export default function dayGestureMathTest() {
         true
       );
       expect(p).assertEqual(day + kDayViewMaxSpanMinutes);
+    });
+
+    it('remap_create_x_keeps_anchor_time_when_view_grows', 0, () => {
+      const oldGeo = new GanttGeometry(day + 8 * 60, day + 22 * 60, 1400);
+      const newGeo = new GanttGeometry(day + 8 * 60, day + 26 * 60, 1400);
+      const anchor = day + 20 * 60;
+      const x0 = oldGeo.xOf(anchor);
+      const remapped = remapCreateX(oldGeo, newGeo, x0);
+      expect(newGeo.timeOf(remapped)).assertEqual(anchor);
+      const span: Span = proposeCreate(newGeo, remapped, newGeo.widthPx);
+      expect(span.start).assertEqual(anchor);
     });
   });
 }

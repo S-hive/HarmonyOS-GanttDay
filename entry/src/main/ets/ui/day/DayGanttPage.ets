@@ -12,9 +12,10 @@ import {
   plannedInnerStrip
 } from '../../domain/gantt/ActualEdit';
 import { computeDayFitMinutes, daySpansTouchingDay, kDayViewMaxSpanMinutes } from '../../domain/gantt/DayVisibleRange';
-import { proposeCreate, proposeMove, proposeResizeEnd, proposeResizeStart } from '../../domain/gantt/DayGestureMath';
+import { proposeCreate, proposeMove, proposeResizeEnd, proposeResizeStart, clampXToView } from '../../domain/gantt/DayGestureMath';
 import { CreateStroke, END_POPUP } from '../../domain/gesture/CreateStroke';
 import { TapClassifier, TapDecision, TapHit } from '../../domain/gesture/TapClassifier';
+import { dayHourMark, layoutDateBadge, skipBodyHourTick } from '../../domain/gantt/DayHourMarks';
 import { FactorySwatches } from '../../domain/gantt/FactorySwatches';
 import { taskBarArgb, taskBarLabelArgb } from '../../domain/gantt/TaskBarTone';
 import { GanttSegment } from '../../domain/models/GanttSegment';
@@ -24,9 +25,9 @@ import { WallClock } from '../../domain/time/WallClock';
 import { util } from '@kit.ArkTS';
 import { MemoryTaskRepository } from '../../data/MemoryTaskRepository';
 import { TaskListener, TaskRepository } from '../../platform/TaskRepository';
-import { DeleteConfirm } from '../common/DeleteConfirm';
 import { persistOrToast } from '../common/SaveFailureToast';
 import { SideDrawer } from '../common/SideDrawer';
+import { bindDeleteVeilCloser, DELETE_VEIL_BOTTOM, DELETE_VEIL_TOP } from '../common/DeleteVeilOverlay';
 import { TaskForm, taskAfterFormClose } from '../task/TaskForm';
 import { AppColors } from '../theme/AppColors';
 import { CreateTaskPopup, formatBarCaption, formatBarTimeLabel } from './CreateTaskPopup';
@@ -47,18 +48,18 @@ import {
 } from './DayHitTest';
 
 const BAR_GAP: number = 2;
-const BAR_LABEL_FONT_PX: number = 28;
+const BAR_HEIGHT: number = (28 * 0.88 - 2) * 0.96;
+const BAR_LABEL_FONT_PX: number = 28 * 0.88 * 1.10 * 1.10;
 const BAR_LABEL_PAD: number = 4;
-const BAR_HEIGHT: number = BAR_LABEL_FONT_PX - 2;
 const LANE_HEIGHT: number = BAR_HEIGHT + BAR_GAP * 2;
 const DRAFT_LANE_INSET: number = BAR_GAP;
 const DRAFT_BAR_HEIGHT: number = LANE_HEIGHT - DRAFT_LANE_INSET * 2;
 const DRAFT_LABEL_PAD: number = 1.5;
 const HOUR_LABEL_FONT_PX: number = 35;
-const HOUR_LABEL_AXIS_GAP: number = 0.5;
-const HOUR_LABEL_TOP_PAD: number = 0.5;
-const HOUR_LABEL_LEFT_PAD: number = 2;
-const HEADER_HEIGHT: number = HOUR_LABEL_TOP_PAD + HOUR_LABEL_FONT_PX + HOUR_LABEL_AXIS_GAP - 3;
+const HOUR_LABEL_LEFT_PAD: number = 4;
+const DATE_BADGE_PAD_PX: number = 5;
+const DATE_BADGE_RADIUS: number = 2;
+const HEADER_HEIGHT: number = HOUR_LABEL_FONT_PX + 8;
 
 class PageTaskSink implements TaskListener {
   apply: (tasks: Task[]) => void = (_tasks: Task[]): void => {
@@ -106,6 +107,7 @@ export struct DayGanttPage {
   @State actualEditTaskId: string = '';
   @State actualEditLane: number = 0;
   @State drawerOpen: boolean = false;
+  @State deleteVeilTaskId: string = '';
   @State formTitle: string = '';
   @State formStart: number = 0;
   @State formEnd: number = 0;
@@ -138,6 +140,7 @@ export struct DayGanttPage {
   private pendingHit: TapHit | null = null;
   private tapTimerId: number = -1;
   private createStroke: CreateStroke = new CreateStroke();
+  private createAnchorMin: number = 0;
   private touchSession: boolean = false;
   private fitStartMin: number = 8 * 60;
   private fitEndMin: number = 22 * 60;
@@ -181,6 +184,7 @@ export struct DayGanttPage {
     this.cancelPendingTap();
     this.cancelLongPress();
     this.exitActualEdit();
+    this.dismissDeleteVeil();
     bindActualEditCloser(null);
     this.clearEdgeRepeat();
     this.unwatch();
@@ -387,6 +391,8 @@ export struct DayGanttPage {
   private startCreateDrag(canvasX: number, canvasY: number): void {
     this.createLane = laneIndexFromY(canvasY, HEADER_HEIGHT, LANE_HEIGHT);
     this.pinnedLanes = snapshotTaskLanes(this.hitBars, HEADER_HEIGHT, LANE_HEIGHT);
+    const geo: GanttGeometry = this.gestureGeo();
+    this.createAnchorMin = geo.snap(geo.timeOf(clampXToView(geo, canvasX)));
     this.createStroke.begin(canvasX);
     this.axisScrollable = ScrollDirection.None;
     this.tapConsumed = true;
@@ -394,7 +400,9 @@ export struct DayGanttPage {
   }
 
   private updateCreatePreview(): void {
-    const span = proposeCreate(this.gestureGeo(), this.createStroke.x0(), this.createStroke.x1());
+    const geo: GanttGeometry = this.gestureGeo();
+    const x0: number = clampXToView(geo, geo.xOf(this.createAnchorMin));
+    const span = proposeCreate(geo, x0, this.createStroke.x1());
     const id: string = this.createDraft !== null ? this.createDraft.id : util.generateRandomUUID();
     this.createDraft = new Task(id, '', span.start, span.end, FactorySwatches.DEFAULT_ID, 0);
     this.preview = null;
@@ -424,8 +432,11 @@ export struct DayGanttPage {
       this.releasePanIfIdle();
       return;
     }
-    if (TapClassifier.onWaitTimeout(hit) === TapDecision.OpenForm && hit.taskId !== null) {
-      this.openForm(hit.taskId);
+    const pointerDown: boolean = this.dragArmed || this.longPressTimerId !== -1;
+    const longPressPending: boolean = this.longPressTimerId !== -1;
+    if (TapClassifier.onWaitTimeout(hit) === TapDecision.OpenForm && hit.taskId !== null &&
+      TapClassifier.shouldOpenDeleteVeilOnWaitTimeout(pointerDown, longPressPending, this.isActualEdit())) {
+      this.openDeleteVeil(hit.taskId);
     }
     this.releasePanIfIdle();
   }
@@ -443,19 +454,9 @@ export struct DayGanttPage {
       this.prevTap = curr;
       this.prevTapMs = nowMs;
       this.pendingHit = curr;
-      if (curr.taskId !== null) {
-        this.tapTimerId = setTimeout(() => {
-          this.fireWaitTimeout();
-        }, TapClassifier.DOUBLE_MS);
-      }
       return;
     }
     this.cancelPendingTap();
-    if (decision === TapDecision.Delete && curr.taskId !== null) {
-      this.tapConsumed = true;
-      this.askDelete(curr.taskId);
-      return;
-    }
     if (decision === TapDecision.Create) {
       this.startCreateDrag(canvasX, curr.y);
     }
@@ -598,6 +599,7 @@ export struct DayGanttPage {
   }
 
   private enterActualEdit(taskId: string, lane: number): void {
+    this.dismissDeleteVeil();
     this.cancelPendingTap();
     this.cancelLongPress();
     this.dragArmed = false;
@@ -692,6 +694,10 @@ export struct DayGanttPage {
       this.exitActualEdit();
       return true;
     }
+    if (this.deleteVeilTaskId.length > 0) {
+      this.dismissDeleteVeil();
+      return true;
+    }
     if (!this.drawerOpen) {
       return false;
     }
@@ -709,20 +715,28 @@ export struct DayGanttPage {
     persistOrToast(this.repo.upsert(taskAfterFormClose(base, this.formTitle, this.formStart, this.formEnd)));
   }
 
-  private async askDelete(taskId: string): Promise<void> {
-    const task: Task | null = this.findTask(taskId);
-    if (task === null) {
+  private openDeleteVeil(taskId: string): void {
+    if (this.isActualEdit()) {
       return;
     }
-    const ok: boolean = await DeleteConfirm.show(task.title);
-    if (!ok) {
+    bindDeleteVeilCloser(() => {
+      this.dismissDeleteVeil();
+    });
+    this.deleteVeilTaskId = taskId;
+  }
+
+  private dismissDeleteVeil(): void {
+    bindDeleteVeilCloser(null);
+    this.deleteVeilTaskId = '';
+  }
+
+  private confirmDeleteVeil(): void {
+    const id: string = this.deleteVeilTaskId;
+    this.dismissDeleteVeil();
+    if (id.length === 0) {
       return;
     }
-    if (this.formBase !== null && this.formBase.id === taskId) {
-      this.drawerOpen = false;
-      this.formBase = null;
-    }
-    await persistOrToast(this.repo.delete(taskId));
+    persistOrToast(this.repo.delete(id));
   }
 
   private deleteFromForm(): void {
@@ -736,26 +750,22 @@ export struct DayGanttPage {
   }
 
   private rebuildBars(geo: GanttGeometry): void {
-    const day0: number = this.day0Of();
-    const segs: GanttSegment[] = [];
+    const raw: GanttSegment[] = [];
     const shown: Task[] = this.tasksForDraw();
-    const fitEndAbs: number = day0 + this.fitEndMin;
     for (let i = 0; i < shown.length; i++) {
       const task: Task = shown[i];
-      let d: number = WallClock.dayStart(day0 + this.fitStartMin);
-      while (d < fitEndAbs) {
-        const clip: GanttSegment[] = DaySegmenter.clipToDay(
-          task.id,
-          dayBarSpanStart(task, this.isActualEdit()),
-          dayBarSpanEnd(task, this.isActualEdit()),
-          d
-        );
-        for (let j = 0; j < clip.length; j++) {
-          segs.push(clip[j]);
-        }
-        d += 1440;
+      const clip: GanttSegment[] = DaySegmenter.clipToRange(
+        task.id,
+        dayBarSpanStart(task, this.isActualEdit()),
+        dayBarSpanEnd(task, this.isActualEdit()),
+        geo.viewStart,
+        geo.viewEnd
+      );
+      for (let j = 0; j < clip.length; j++) {
+        raw.push(clip[j]);
       }
     }
+    const segs: GanttSegment[] = DaySegmenter.mergeAbutting(raw);
     const draftId: string = this.createDraft === null ? '' : this.createDraft.id;
     const lanes: Map<string, number> = LaneLayout.assignExclusive(LaneLayout.withoutTask(segs, draftId));
     const byId: Map<string, Task> = new Map<string, Task>();
@@ -860,31 +870,37 @@ export struct DayGanttPage {
     }
 
     const day0: number = this.day0Of();
-    const startH: number = this.fitStartMin / 60;
-    const endH: number = this.fitEndMin / 60;
-    const hourPx: number = this.viewportWidthVp / (endH - startH);
-    for (let h = startH; h <= endH; h++) {
-      const t: number = day0 + h * 60;
+    const startMin: number = this.fitStartMin;
+    const endMin: number = this.fitEndMin;
+    const hourPx: number = this.viewportWidthVp / ((endMin - startMin) / 60);
+    for (let m = startMin; m <= endMin; m += 60) {
+      const t: number = day0 + m;
       const x: number = geo.xOf(t);
-      const labelH: number = ((h % 24) + 24) % 24;
-      const emphasized: boolean = labelH % 6 === 0;
-      ctx.strokeStyle = emphasized ? 'rgba(0, 0, 0, 0.14)' : 'rgba(0, 0, 0, 0.07)';
-      ctx.beginPath();
-      ctx.moveTo(x, HEADER_HEIGHT);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-      ctx.font = `${HOUR_LABEL_FONT_PX}px sans-serif`;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText(`${labelH}:00`, x + HOUR_LABEL_LEFT_PAD, HEADER_HEIGHT - HOUR_LABEL_AXIS_GAP);
+      const mark = dayHourMark(day0, m);
+      if (!mark.isDayBoundary && !skipBodyHourTick(m)) {
+        ctx.strokeStyle = mark.emphasized ? 'rgba(0, 0, 0, 0.14)' : 'rgba(0, 0, 0, 0.07)';
+        ctx.beginPath();
+        ctx.moveTo(x, HEADER_HEIGHT);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      if (mark.isDayBoundary) {
+        this.paintDateBadge(ctx, x, mark.label);
+      } else {
+        this.paintHourLabel(ctx, x, mark.label, mark.emphasized);
+      }
     }
 
     if (hourPx > 40) {
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.04)';
-      for (let h = startH; h < endH; h++) {
-        const base: number = geo.xOf(day0 + h * 60);
+      ctx.lineWidth = 1;
+      for (let m = startMin; m < endMin; m += 60) {
+        const base: number = geo.xOf(day0 + m);
         for (let q = 1; q < 4; q++) {
+          const tickMin: number = m + 15 * q;
+          if (skipBodyHourTick(tickMin)) {
+            continue;
+          }
           const x: number = base + hourPx * q / 4;
           ctx.beginPath();
           ctx.moveTo(x, HEADER_HEIGHT);
@@ -893,6 +909,94 @@ export struct DayGanttPage {
         }
       }
     }
+  }
+
+  private headerFontPx(ctx: CanvasRenderingContext2D): number {
+    return HOUR_LABEL_FONT_PX * ctx.height / this.viewportHeightVp;
+  }
+
+  private paintHourLabel(ctx: CanvasRenderingContext2D, xVp: number, label: string, emphasized: boolean): void {
+    const sx: number = ctx.width / this.canvasWidthVp;
+    const sy: number = ctx.height / this.viewportHeightVp;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const fontPx: number = this.headerFontPx(ctx);
+    ctx.font = emphasized ? `bold ${fontPx}px sans-serif` : `${fontPx}px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillText(label, (xVp + HOUR_LABEL_LEFT_PAD) * sx, HEADER_HEIGHT * sy / 2);
+    ctx.restore();
+  }
+
+  private strokeRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+    let radius: number = r;
+    if (radius > w / 2) {
+      radius = w / 2;
+    }
+    if (radius > h / 2) {
+      radius = h / 2;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.arcTo(x + w, y, x + w, y + radius, radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.arcTo(x + w, y + h, x + w - radius, y + h, radius);
+    ctx.lineTo(x + radius, y + h);
+    ctx.arcTo(x, y + h, x, y + h - radius, radius);
+    ctx.lineTo(x, y + radius);
+    ctx.arcTo(x, y, x + radius, y, radius);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  private paintDateBadge(ctx: CanvasRenderingContext2D, xVp: number, label: string): void {
+    const sx: number = ctx.width / this.canvasWidthVp;
+    const sy: number = ctx.height / this.viewportHeightVp;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const fontPx: number = this.headerFontPx(ctx);
+    ctx.font = `bold ${fontPx}px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    const metrics = ctx.measureText(label);
+    const inkLeft: number = metrics.actualBoundingBoxLeft;
+    const inkRight: number = metrics.actualBoundingBoxRight;
+    const inkAscent: number = metrics.actualBoundingBoxAscent;
+    const inkDescent: number = metrics.actualBoundingBoxDescent;
+    let inkW: number = inkLeft + inkRight;
+    let inkH: number = inkAscent + inkDescent;
+    let ascent: number = inkAscent;
+    let left: number = inkLeft;
+    if (inkW <= 1) {
+      inkW = metrics.width;
+      left = 0;
+    }
+    if (inkH <= 1) {
+      inkH = fontPx * 0.72;
+      ascent = inkH * 0.8;
+    }
+    const pad: number = DATE_BADGE_PAD_PX;
+    const originX: number = (xVp + HOUR_LABEL_LEFT_PAD) * sx;
+    const box = layoutDateBadge(
+      originX - left,
+      inkW,
+      inkH,
+      HEADER_HEIGHT * sy,
+      pad
+    );
+    const x0: number = Math.round(box.x);
+    const y0: number = Math.round(box.y);
+    const bw: number = Math.max(1, Math.round(box.w));
+    const bh: number = Math.max(1, Math.round(box.h));
+    const color: string = argbToCss(AppColors.DAY_BOUNDARY);
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1;
+    this.strokeRoundRect(ctx, x0 + 0.5, y0 + 0.5, bw - 1, bh - 1, DATE_BADGE_RADIUS);
+    ctx.fillText(label, x0 + pad + left, y0 + pad + ascent);
+    ctx.restore();
   }
 
   private laneMapFromBars(): Map<string, number> {
@@ -908,17 +1012,17 @@ export struct DayGanttPage {
   private paintBars(ctx: CanvasRenderingContext2D): void {
     const draftId: string = this.createDraft === null ? '' : this.createDraft.id;
     const now: number = WallClock.minutes(new Date());
+    const labeled: Map<string, boolean> = new Map<string, boolean>();
     for (let i = 0; i < this.hitBars.length; i++) {
       const b: HitBar = this.hitBars[i];
       const isDraft: boolean = draftId.length > 0 && b.taskId === draftId;
       let fill: number = AppColors.AZURE;
       if (isDraft) {
-        const inset: number = 1;
         ctx.fillStyle = argbToCss(AppColors.CREATE_PREVIEW);
         ctx.strokeStyle = argbToCss(AppColors.CREATE_PREVIEW_STROKE);
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.rect(b.x + inset, b.y + inset, b.width - inset * 2, b.height - inset * 2);
+        ctx.rect(b.x, b.y, b.width, b.height);
         ctx.fill();
         ctx.stroke();
       } else {
@@ -947,6 +1051,10 @@ export struct DayGanttPage {
           ctx.fillRect(strip.x, strip.y, strip.width, strip.height);
         }
       }
+      if (labeled.has(b.taskId)) {
+        continue;
+      }
+      labeled.set(b.taskId, true);
       let label: string = '';
       if (isDraft && this.createDraft !== null) {
         label = formatBarTimeLabel(this.createDraft.plannedStart, this.createDraft.plannedEnd);
@@ -960,19 +1068,27 @@ export struct DayGanttPage {
           }
         }
       }
-      const pad: number = isDraft ? 1 + DRAFT_LABEL_PAD : BAR_LABEL_PAD;
+      if (label.length === 0) {
+        continue;
+      }
+      const pad: number = isDraft ? DRAFT_LABEL_PAD : BAR_LABEL_PAD;
       const tx: number = b.x + pad;
       const ty: number = b.y + b.height / 2;
       ctx.font = `${BAR_LABEL_FONT_PX}px sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = argbToCss(0xDE000000);
-      ctx.fillText(label, tx, ty);
+      const textW: number = ctx.measureText(label).width;
+      const overflows: boolean = textW > b.width - pad * 2;
+      const onBar: string = isDraft ? argbToCss(0xDE000000) : argbToCss(taskBarLabelArgb(fill));
+      if (overflows) {
+        ctx.fillStyle = argbToCss(0xDE000000);
+        ctx.fillText(label, tx, ty);
+      }
       ctx.save();
       ctx.beginPath();
       ctx.rect(b.x, b.y, b.width, b.height);
       ctx.clip();
-      ctx.fillStyle = isDraft ? '#457BD9' : argbToCss(taskBarLabelArgb(fill));
+      ctx.fillStyle = onBar;
       ctx.fillText(label, tx, ty);
       ctx.restore();
     }
@@ -1054,6 +1170,9 @@ export struct DayGanttPage {
     rawX: number,
     stop: () => void
   ): void {
+    if (this.deleteVeilTaskId.length > 0) {
+      return;
+    }
     if (type === TouchType.Down) {
       stop();
       const hit = hitTest(this.hitBars, x, y, DEFAULT_EDGE_SLOP);
@@ -1250,7 +1369,13 @@ export struct DayGanttPage {
       this.pinnedLanes = null;
       this.dragTask = null;
       this.dragKind = HIT_EMPTY;
-      if (!wasDragging && type === TouchType.Up && this.pendingHit !== null &&
+      const releaseTaskId: string | null = this.pendingHit === null ? null : this.pendingHit.taskId;
+      if (!wasDragging && type === TouchType.Up &&
+        TapClassifier.shouldOpenDeleteVeilOnRelease(releaseTaskId, wasDragging, this.isActualEdit(), false) &&
+        releaseTaskId !== null) {
+        this.cancelPendingTap();
+        this.openDeleteVeil(releaseTaskId);
+      } else if (!wasDragging && type === TouchType.Up && this.pendingHit !== null &&
         this.pendingHit.taskId === null) {
         this.prevTapMs = Date.now();
         if (this.tapTimerId !== -1) {
@@ -1369,56 +1494,95 @@ export struct DayGanttPage {
   }
 
   build() {
-    Column() {
-      if (this.isActualEdit()) {
-        this.actualEditBanner()
-      } else {
-        this.dayTitleBar()
-      }
-      Stack() {
-        Scroll(this.scroller) {
-          Canvas(this.ctx)
-            .width(this.canvasWidthVp)
-            .height(this.viewportHeightVp)
-            .onReady(() => {
-              this.canvasReady = true;
-              this.redraw();
-            })
-            .onTouch((event: TouchEvent) => {
-              this.onCanvasTouch(event);
-            })
-            .onMouse((event: MouseEvent) => {
-              this.onCanvasMouse(event);
-            })
+    Stack() {
+      Column() {
+        if (this.isActualEdit()) {
+          this.actualEditBanner()
+        } else {
+          this.dayTitleBar()
         }
-        .scrollable(this.axisScrollable)
-        .scrollBar(BarState.Off)
-        .width('100%')
-        .height('100%')
-        .onAreaChange((_old: Area, area: Area) => {
-          this.applyViewport(lengthVp(area.width), lengthVp(area.height));
-        })
-        if (this.drawerOpen) {
-          SideDrawer({
-            screenWidth: this.viewportWidthVp,
-            onClose: () => {
-              this.closeDrawer();
-            }
-          }) {
-            TaskForm({
-              title: $formTitle,
-              plannedStart: $formStart,
-              plannedEnd: $formEnd,
-              onDelete: () => {
-                this.deleteFromForm();
+        Stack() {
+          Scroll(this.scroller) {
+            Canvas(this.ctx)
+              .width(this.canvasWidthVp)
+              .height(this.viewportHeightVp)
+              .onReady(() => {
+                this.canvasReady = true;
+                this.redraw();
+              })
+              .onTouch((event: TouchEvent) => {
+                this.onCanvasTouch(event);
+              })
+              .onMouse((event: MouseEvent) => {
+                this.onCanvasMouse(event);
+              })
+          }
+          .scrollable(this.deleteVeilTaskId.length > 0 ? ScrollDirection.None : this.axisScrollable)
+          .scrollBar(BarState.Off)
+          .width('100%')
+          .height('100%')
+          .hitTestBehavior(this.deleteVeilTaskId.length > 0 ? HitTestMode.None : HitTestMode.Default)
+          .onAreaChange((_old: Area, area: Area) => {
+            this.applyViewport(lengthVp(area.width), lengthVp(area.height));
+          })
+          if (this.drawerOpen) {
+            SideDrawer({
+              screenWidth: this.viewportWidthVp,
+              onClose: () => {
+                this.closeDrawer();
               }
-            })
+            }) {
+              TaskForm({
+                title: $formTitle,
+                plannedStart: $formStart,
+                plannedEnd: $formEnd,
+                onDelete: () => {
+                  this.deleteFromForm();
+                }
+              })
+            }
           }
         }
+        .layoutWeight(1)
+        .width('100%')
+        .hitTestBehavior(this.deleteVeilTaskId.length > 0 ? HitTestMode.None : HitTestMode.Default)
       }
-      .layoutWeight(1)
       .width('100%')
-      .hitTestBehavior(HitTestMode.Default)
+      .height('100%')
+      .hitTestBehavior(this.deleteVeilTaskId.length > 0 ? HitTestMode.None : HitTestMode.Default)
+
+      if (this.deleteVeilTaskId.length > 0) {
+        Column() {
+          Column()
+            .width('100%')
+            .height('50%')
+            .backgroundColor(DELETE_VEIL_TOP)
+            .onClick(() => {
+              this.confirmDeleteVeil();
+            })
+            .priorityGesture(
+              TapGesture()
+                .onAction(() => {
+                  this.confirmDeleteVeil();
+                })
+            )
+          Column()
+            .width('100%')
+            .height('50%')
+            .backgroundColor(DELETE_VEIL_BOTTOM)
+            .onClick(() => {
+              this.dismissDeleteVeil();
+            })
+            .priorityGesture(
+              TapGesture()
+                .onAction(() => {
+                  this.dismissDeleteVeil();
+                })
+            )
+        }
+        .width('100%')
+        .height('100%')
+      }
     }
     .width('100%')
     .height('100%')

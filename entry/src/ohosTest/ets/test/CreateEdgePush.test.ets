@@ -14,8 +14,8 @@ export default function createEdgePushTest() {
     const viewEnd = day0 + 22 * 60;
     const w = 700;
 
-    it('constants_match_windows', 0, () => {
-      expect(CREATE_EDGE_ZONE_VP).assertEqual(56);
+    it('edge_zone_is_three_times_the_original_56', 0, () => {
+      expect(CREATE_EDGE_ZONE_VP).assertEqual(168);
       expect(CREATE_EDGE_REPEAT_MS).assertEqual(180);
       expect(CREATE_EDGE_HOLD_FRAC).assertEqual(0.35);
     });
@@ -28,6 +28,12 @@ export default function createEdgePushTest() {
     it('right_edge_opens_one_hour_from_fixed_base', 0, () => {
       const e = new CreateEdgePush();
       const p = e.applyPointer(w - 10, w, viewStart, viewEnd, day0);
+      expect(p).assertEqual(viewEnd + 60);
+    });
+
+    it('pointer_farther_from_edge_still_starts_expand', 0, () => {
+      const e = new CreateEdgePush();
+      const p = e.applyPointer(w - 120, w, viewStart, viewEnd, day0);
       expect(p).assertEqual(viewEnd + 60);
     });
 
