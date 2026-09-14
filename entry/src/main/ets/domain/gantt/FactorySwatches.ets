@@ -13,4 +13,14 @@ export class FactorySwatches {
     new ColorSwatch('cream', '奶油', 0xFFFEF3C7, 48, 0.964, 0.888, 6, false, false),
     new ColorSwatch('gray', '灰', 0xFFDEE2E6, 211, 0.137, 0.886, 7, false, true)
   ];
+
+  static argbOf(id: string): number {
+    const all: ColorSwatch[] = FactorySwatches.ALL;
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].id === id) {
+        return all[i].argb;
+      }
+    }
+    return all[0].argb;
+  }
 }

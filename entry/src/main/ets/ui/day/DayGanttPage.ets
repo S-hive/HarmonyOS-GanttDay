@@ -1,4 +1,4 @@
-import { GanttGeometry } from '../../domain/gantt/GanttGeometry';
+import { GanttGeometry, nowLineX } from '../../domain/gantt/GanttGeometry';
 import { DaySegmenter } from '../../domain/gantt/DaySegmenter';
 import { LaneLayout } from '../../domain/gantt/LaneLayout';
 import { CREATE_EDGE_REPEAT_MS, CreateEdgePush } from '../../domain/gantt/CreateEdgePush';
@@ -11,13 +11,13 @@ import {
   dayBarUsesActual,
   plannedInnerStrip
 } from '../../domain/gantt/ActualEdit';
-import { computeDayFitMinutes, daySpansTouchingDay, kDayViewMaxSpanMinutes } from '../../domain/gantt/DayVisibleRange';
+import { computeDayFitMinutes, daySpansTouchingDay, kDayViewMaxSpanMinutes, todayNowProbes } from '../../domain/gantt/DayVisibleRange';
 import { proposeCreate, proposeMove, proposeResizeEnd, proposeResizeStart, clampXToView } from '../../domain/gantt/DayGestureMath';
 import { CreateStroke, END_POPUP } from '../../domain/gesture/CreateStroke';
 import { TapClassifier, TapDecision, TapHit } from '../../domain/gesture/TapClassifier';
 import { dayHourMark, layoutDateBadge, skipBodyHourTick } from '../../domain/gantt/DayHourMarks';
 import { FactorySwatches } from '../../domain/gantt/FactorySwatches';
-import { taskBarArgb, taskBarLabelArgb } from '../../domain/gantt/TaskBarTone';
+import { resolvedSwatchArgb, taskBarArgb, taskBarLabelArgb } from '../../domain/gantt/TaskBarTone';
 import { GanttSegment } from '../../domain/models/GanttSegment';
 import { Task } from '../../domain/models/Task';
 import { dateOnly } from '../../domain/time/Calendar';
@@ -60,6 +60,7 @@ const HOUR_LABEL_LEFT_PAD: number = 4;
 const DATE_BADGE_PAD_PX: number = 5;
 const DATE_BADGE_RADIUS: number = 2;
 const HEADER_HEIGHT: number = HOUR_LABEL_FONT_PX + 8;
+const NOW_LINE_MS: number = 30000;
 
 class PageTaskSink implements TaskListener {
   apply: (tasks: Task[]) => void = (_tasks: Task[]): void => {
@@ -155,6 +156,7 @@ export struct DayGanttPage {
   private longPressTimerId: number = -1;
   private longPressHitActual: boolean = false;
   private ignoreNextActualEditUp: boolean = false;
+  private nowTimerId: number = -1;
 
   aboutToAppear(): void {
     this.viewDate = dateOnly(this.date);
@@ -166,6 +168,8 @@ export struct DayGanttPage {
       this.redraw();
     };
     this.bindWatch();
+    this.recomputeFit([]);
+    this.startNowTimer();
     bindActualEditCloser(() => {
       this.exitActualEdit();
     });
@@ -183,6 +187,7 @@ export struct DayGanttPage {
     this.closeCreateDlg();
     this.cancelPendingTap();
     this.cancelLongPress();
+    this.clearNowTimer();
     this.exitActualEdit();
     this.dismissDeleteVeil();
     bindActualEditCloser(null);
@@ -213,6 +218,7 @@ export struct DayGanttPage {
       this.exitActualEdit();
       this.bindWatch();
       this.didFitScroll = false;
+      this.recomputeFit([]);
       this.scrollToFit();
       this.redraw();
     }
@@ -262,10 +268,29 @@ export struct DayGanttPage {
 
   private recomputeFit(probes: number[]): void {
     const day0: number = this.day0Of();
+    const now: number = WallClock.minutes(new Date());
+    const include: number[] = todayNowProbes(day0, now).concat(probes);
     const spans = daySpansTouchingDay(this.cachedTasks, day0);
-    const fit = computeDayFitMinutes(8, 22, day0, spans, probes);
+    const fit = computeDayFitMinutes(8, 22, day0, spans, include);
     this.fitStartMin = fit.start;
     this.fitEndMin = fit.end;
+  }
+
+  private startNowTimer(): void {
+    this.clearNowTimer();
+    this.nowTimerId = setInterval((): void => {
+      if (!this.createStroke.isDragging() && !this.createOpen && this.actualEditTaskId.length === 0) {
+        this.recomputeFit([]);
+      }
+      this.redraw();
+    }, NOW_LINE_MS);
+  }
+
+  private clearNowTimer(): void {
+    if (this.nowTimerId !== -1) {
+      clearInterval(this.nowTimerId);
+      this.nowTimerId = -1;
+    }
   }
 
   private clearCreateAxis(): void {
@@ -1032,7 +1057,8 @@ export struct DayGanttPage {
             this.isActualEdit() ? false : owner.isDone,
             owner.plannedStart,
             owner.plannedEnd,
-            now
+            now,
+            resolvedSwatchArgb(owner)
           );
         }
         ctx.fillStyle = argbToCss(fill);
@@ -1096,11 +1122,10 @@ export struct DayGanttPage {
 
   private paintNowLine(ctx: CanvasRenderingContext2D, geo: GanttGeometry): void {
     const now: number = WallClock.minutes(new Date());
-    const day0: number = this.day0Of();
-    if (WallClock.dayStart(now) !== day0) {
+    const x: number | null = nowLineX(geo, now);
+    if (x === null) {
       return;
     }
-    const x: number = geo.xOf(now);
     ctx.strokeStyle = '#FF5252';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -1216,6 +1241,12 @@ export struct DayGanttPage {
           this.longPressTimerId = -1;
           const lane: number = laneIndexFromY(y, HEADER_HEIGHT, LANE_HEIGHT);
           this.enterActualEdit(pressId, lane);
+        }, LONG_PRESS_MS);
+      } else if (TapClassifier.shouldStartCreateOnLongPress(pressId)) {
+        this.longPressTimerId = setTimeout(() => {
+          this.longPressTimerId = -1;
+          this.cancelPendingTap();
+          this.startCreateDrag(this.grabX, this.grabY);
         }, LONG_PRESS_MS);
       }
       const curr: TapHit = this.toTapHit(hit.taskId, x, y);

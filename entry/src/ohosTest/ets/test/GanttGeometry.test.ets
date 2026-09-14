@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { GanttGeometry } from '../../../main/ets/domain/gantt/GanttGeometry';
+import { GanttGeometry, nowLineX } from '../../../main/ets/domain/gantt/GanttGeometry';
 import { WallClock } from '../../../main/ets/domain/time/WallClock';
 
 export default function ganttGeometryTest() {
@@ -31,6 +31,14 @@ export default function ganttGeometryTest() {
       expect(geo.clampDuration(start, start + 5)).assertEqual(start + 15);
       expect(geo.clampDuration(start, start - 30)).assertEqual(start + 15);
       expect(geo.clampDuration(start, start + 45)).assertEqual(start + 45);
+    });
+
+    it('now_line_x_only_when_now_is_in_view', 0, () => {
+      expect(nowLineX(geo, day + 8 * 60)).assertEqual(0);
+      expect(nowLineX(geo, day + 22 * 60)).assertEqual(1400);
+      expect(nowLineX(geo, day + 15 * 60)).assertEqual(700);
+      expect(nowLineX(geo, day + 7 * 60)).assertNull();
+      expect(nowLineX(geo, day + 23 * 60)).assertNull();
     });
   });
 }

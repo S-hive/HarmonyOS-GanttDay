@@ -24,14 +24,6 @@ export class TapClassifier {
       return TapDecision.Wait;
     }
 
-    if (prev.taskId === null && curr.taskId === null) {
-      const dx = curr.x - prev.x;
-      const dy = curr.y - prev.y;
-      if (Math.hypot(dx, dy) <= TapClassifier.HIT_SLOP_VP) {
-        return TapDecision.Create;
-      }
-    }
-
     return TapDecision.Ignore;
   }
 
@@ -57,5 +49,9 @@ export class TapClassifier {
     actualEditActive: boolean
   ): boolean {
     return !pointerDown && !longPressPending && !actualEditActive;
+  }
+
+  static shouldStartCreateOnLongPress(taskId: string | null): boolean {
+    return taskId === null;
   }
 }

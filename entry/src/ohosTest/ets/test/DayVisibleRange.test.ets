@@ -3,7 +3,8 @@ import { Task } from '../../../main/ets/domain/models/Task';
 import { WallClock } from '../../../main/ets/domain/time/WallClock';
 import {
   computeDayFitMinutes,
-  daySpansTouchingDay
+  daySpansTouchingDay,
+  todayNowProbes
 } from '../../../main/ets/domain/gantt/DayVisibleRange';
 
 export default function dayVisibleRangeTest() {
@@ -36,6 +37,21 @@ export default function dayVisibleRangeTest() {
       expect(spans[0].start).assertEqual(day0 + 23 * 60);
       expect(spans[0].end).assertEqual(day0 + 24 * 60);
       const fit = computeDayFitMinutes(8, 22, day0, spans, []);
+      expect(fit.end).assertEqual(24 * 60);
+    });
+
+    it('today_now_probes_only_on_that_calendar_day', 0, () => {
+      expect(todayNowProbes(day0, day0 + 7 * 60).length).assertEqual(1);
+      expect(todayNowProbes(day0, day0 + 7 * 60)[0]).assertEqual(day0 + 7 * 60);
+      expect(todayNowProbes(day0, day0 + 23 * 60 + 21).length).assertEqual(1);
+      expect(todayNowProbes(day0, day0 - 1).length).assertEqual(0);
+      expect(todayNowProbes(day0, day0 + WallClock.MINUTES_PER_DAY).length).assertEqual(0);
+    });
+
+    it('today_now_after_22_lengthens_fit_so_now_line_stays_on_axis', 0, () => {
+      const now: number = day0 + 23 * 60 + 21;
+      const fit = computeDayFitMinutes(8, 22, day0, [], todayNowProbes(day0, now));
+      expect(fit.start).assertEqual(8 * 60);
       expect(fit.end).assertEqual(24 * 60);
     });
   });

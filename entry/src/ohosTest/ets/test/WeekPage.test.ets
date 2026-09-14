@@ -12,6 +12,7 @@ import {
   weekDayLeft,
   weekDayWidth,
   weekDefaultScrollY,
+  weekHeaderDate,
   weekScrollY
 } from '../../../main/ets/ui/week/WeekPage';
 
@@ -89,6 +90,14 @@ export default function weekPageTest() {
       const b = weekBlockRect(slot('b', 0, 0, 1, 0, 1), 100);
       expect(hitTestWeekBlock([a, b], 10, 10)).assertEqual('b');
       expect(hitTestWeekBlock([a], 200, 10)).assertNull();
+    });
+
+    it('header_day_index_maps_to_calendar_date', 0, () => {
+      const monday = new Date(2026, 8, 14);
+      const wed = weekHeaderDate(monday, 2);
+      expect(wed.getFullYear()).assertEqual(2026);
+      expect(wed.getMonth()).assertEqual(8);
+      expect(wed.getDate()).assertEqual(16);
     });
   });
 }

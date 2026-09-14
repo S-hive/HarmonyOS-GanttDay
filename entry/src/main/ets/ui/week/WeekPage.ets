@@ -181,6 +181,10 @@ export function weekDayLeft(dayIndex: number, dayWidth: number): number {
   return dayIndex * (dayWidth + WEEK_DAY_BOUNDARY_STRIDE);
 }
 
+export function weekHeaderDate(monday: Date, dayIndex: number): Date {
+  return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + dayIndex);
+}
+
 export function weekBlockRect(slot: WeekSlot, dayWidth: number): WeekBlockRect {
   const gaps: number = WEEK_BAR_GAP * Math.max(0, slot.columnCount - 1);
   const colW: number = (dayWidth - gaps) / slot.columnCount;
@@ -322,8 +326,7 @@ export struct WeekPage {
   }
 
   private dateOfDay(dayIndex: number): Date {
-    const monday: Date = this.weekMonday();
-    return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + dayIndex);
+    return weekHeaderDate(this.weekMonday(), dayIndex);
   }
 
   private headerLabel(dayIndex: number): string {
@@ -681,6 +684,12 @@ export struct WeekPage {
     .onClick(() => {
       this.onOpenDay(this.dateOfDay(dayIndex));
     })
+    .gesture(
+      TapGesture()
+        .onAction(() => {
+          this.onOpenDay(this.dateOfDay(dayIndex));
+        })
+    )
   }
 
   build() {
@@ -707,6 +716,7 @@ export struct WeekPage {
         .width('100%')
         .height(WEEK_HEADER_HEIGHT)
 
+        Stack() {
         Scroll(this.scroller) {
           Row() {
             Column() {
@@ -762,6 +772,11 @@ export struct WeekPage {
           }
         })
         .width('100%')
+        .height('100%')
+
+        this.boundaryOverlay()
+        }
+        .width('100%')
         .layoutWeight(1)
       }
       .width('100%')
@@ -769,8 +784,6 @@ export struct WeekPage {
       .onAreaChange((_old: Area, area: Area) => {
         this.applyViewport(lengthVp(area.width), lengthVp(area.height));
       })
-
-      this.boundaryOverlay()
 
       if (this.detailOpen) {
         BarDetailPopup({

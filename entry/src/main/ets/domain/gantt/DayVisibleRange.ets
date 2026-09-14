@@ -88,6 +88,13 @@ export function computeDayFitMinutes(
   return new FitMinutes(start, end);
 }
 
+export function todayNowProbes(day0: number, now: number): number[] {
+  if (now < day0 || now >= day0 + WallClock.MINUTES_PER_DAY) {
+    return [];
+  }
+  return [now];
+}
+
 export function daySpansTouchingDay(tasks: Task[], day0: number): FitMinutes[] {
   const out: FitMinutes[] = [];
   const day1: number = day0 + WallClock.MINUTES_PER_DAY;

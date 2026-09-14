@@ -26,15 +26,15 @@ export default function tapClassifierTest() {
       expect(d).assertEqual(TapDecision.Wait);
     });
 
-    it('second_empty_tap_creates', 0, () => {
+    it('second_empty_tap_does_not_create', 0, () => {
       const d = TapClassifier.onDown(hit(40, 40, null), 1000, hit(42, 41, null), 1200);
-      expect(d).assertEqual(TapDecision.Create);
+      expect(d).assertEqual(TapDecision.Ignore);
     });
 
-    it('empty_second_tap_within_double_window_still_creates', 0, () => {
+    it('empty_second_tap_within_double_window_does_not_create', 0, () => {
       expect(TapClassifier.DOUBLE_MS).assertEqual(250);
       const d = TapClassifier.onDown(hit(40, 40, null), 1000, hit(42, 41, null), 1240);
-      expect(d).assertEqual(TapDecision.Create);
+      expect(d).assertEqual(TapDecision.Ignore);
     });
 
     it('timeout_on_bar_opens_form', 0, () => {
@@ -70,6 +70,14 @@ export default function tapClassifierTest() {
     it('empty_taps_far_apart_ignore', 0, () => {
       const d = TapClassifier.onDown(hit(0, 0, null), 1000, hit(80, 0, null), 1100);
       expect(d).assertEqual(TapDecision.Ignore);
+    });
+
+    it('empty_long_press_starts_create_drag', 0, () => {
+      expect(TapClassifier.shouldStartCreateOnLongPress(null)).assertTrue();
+    });
+
+    it('bar_long_press_does_not_start_create_drag', 0, () => {
+      expect(TapClassifier.shouldStartCreateOnLongPress('a')).assertFalse();
     });
   });
 }

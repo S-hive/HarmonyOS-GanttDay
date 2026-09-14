@@ -32,3 +32,10 @@ export class GanttGeometry {
     return end;
   }
 }
+
+export function nowLineX(geo: GanttGeometry, now: number): number | null {
+  if (now < geo.viewStart || now > geo.viewEnd) {
+    return null;
+  }
+  return geo.xOf(now);
+}
